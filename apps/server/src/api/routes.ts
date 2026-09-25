@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { getAgentDefinitions, registerAgentDefinition, spawnAgentInstance } from '../agents/registry.js';
+import { getAgentDefinitions, spawnAgentInstance } from '../agents/registry.js';
 import { createTask, getTaskById, updateTaskStatus } from '../tasks/service.js';
 import { workflowEngine } from '../workflows/engine.js';
 import { goalPlanner } from '../orchestrator/planner.js';
+import { approvalService } from '../approvals/service.js';
+import { memoryService } from '../memory/service.js';
+import { budgetTracker } from '../memory/budget.js';
 import { prisma } from '../db.js';
-import type { AgentRole, TaskStatus } from '@virtual-office/shared';
+import type { AgentRole, TaskStatus, MemoryScope } from '@virtual-office/shared';
 
 export async function registerRoutes(app: FastifyInstance) {
   // Organizations & Projects
@@ -112,5 +115,61 @@ export async function registerRoutes(app: FastifyInstance) {
 
     const task = await updateTaskStatus(id, status, assignedAgentId);
     return task;
+  });
+
+  // Approvals
+  app.get('/api/approvals', async (req) => {
+    const { projectId } = req.query as { projectId?: string };
+    if (projectId) return approvalService.getPending(projectId);
+    return prisma.approval.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'asc' },
+      include: { agentInstance: { include: { definition: true } }, task: true },
+    });
+  });
+
+  app.post('/api/approvals/:id/approve', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { decidedBy = 'founder' } = req.body as { decidedBy?: string };
+    try {
+      await approvalService.decide(id, 'approved', decidedBy);
+      return { message: 'Approved' };
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post('/api/approvals/:id/reject', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { decidedBy = 'founder' } = req.body as { decidedBy?: string };
+    try {
+      await approvalService.decide(id, 'rejected', decidedBy);
+      return { message: 'Rejected' };
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Memory
+  app.get('/api/memory/:scope/:scopeId', async (req) => {
+    const { scope, scopeId } = req.params as { scope: MemoryScope; scopeId: string };
+    return memoryService.getScopeContext(scope, scopeId);
+  });
+
+  app.post('/api/memory/:scope/:scopeId', async (req, reply) => {
+    const { scope, scopeId } = req.params as { scope: MemoryScope; scopeId: string };
+    const { key, value } = req.body as { key: string; value: string };
+    await memoryService.set(scope, scopeId, key, value);
+    return reply.status(201).send({ message: 'Memory stored' });
+  });
+
+  // Budget
+  app.get('/api/projects/:id/budget', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      return await budgetTracker.getProjectCostSummary(id);
+    } catch (err) {
+      return reply.status(404).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 }
