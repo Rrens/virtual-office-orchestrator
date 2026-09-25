@@ -55,12 +55,14 @@ export class GoalPlanner {
     const prompt = `Goal: "${goal}"\nGenerate an execution plan for this goal. Output pure JSON matching the schema.`;
 
     try {
-      const response = await modelRouter.routeByTier('tier2_9router', {
+      const response = await modelRouter.routeByTier('tier1_ollama', {
+        maxTokens: 1024,
         messages: [
           { role: 'system', content: ORCHESTRATOR_SYSTEM_PROMPT },
           { role: 'user', content: prompt },
         ],
         temperature: 0.2,
+        agentRole: 'orchestrator',
       });
 
       const cleanJson = response.content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();

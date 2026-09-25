@@ -2,22 +2,25 @@ import type { ModelProvider, ModelRequest, ModelResponse } from './types.js';
 
 export class OllamaProvider implements ModelProvider {
   tier = 'tier1_ollama' as const;
-  name = 'Ollama (Local)';
+  name = 'Ollama (Proxmox)';
   private baseUrl: string;
   private defaultModel: string;
+  private codeModel: string;
 
   constructor(
-    baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-    defaultModel = process.env.OLLAMA_MODEL_GENERAL || 'llama3.1:8b'
+    baseUrl = process.env.OLLAMA_BASE_URL || 'http://192.168.0.2:11434',
+    defaultModel = process.env.OLLAMA_MODEL_GENERAL || 'qwen3.5:4b',
+    codeModel = process.env.OLLAMA_MODEL_CODE || 'qwen2.5-coder:3b'
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.defaultModel = defaultModel;
+    this.codeModel = codeModel;
   }
 
   async isAvailable(): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/api/tags`, {
-        signal: AbortSignal.timeout(2000),
+        signal: AbortSignal.timeout(3000),
       });
       return res.ok;
     } catch {
@@ -27,9 +30,15 @@ export class OllamaProvider implements ModelProvider {
 
   async complete(request: ModelRequest): Promise<ModelResponse> {
     const startTime = Date.now();
-    const model = request.agentRole?.includes('engineer') || request.agentRole?.includes('developer')
-      ? (process.env.OLLAMA_MODEL_CODE || 'qwen2.5-coder:7b')
-      : this.defaultModel;
+    const isPlanner = request.agentRole === 'orchestrator';
+    const isCode =
+      request.agentRole?.includes('engineer') ||
+      request.agentRole?.includes('developer') ||
+      request.agentRole?.includes('qa') ||
+      request.agentRole?.includes('devops');
+
+    const plannerModel = process.env.OLLAMA_MODEL_PLANNER || 'qwen2.5:0.5b';
+    const model = isPlanner ? plannerModel : isCode ? this.codeModel : this.defaultModel;
 
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
@@ -38,7 +47,7 @@ export class OllamaProvider implements ModelProvider {
         model,
         messages: request.messages,
         options: {
-          temperature: request.temperature ?? 0.7,
+          temperature: request.temperature ?? 0.4,
           num_predict: request.maxTokens ?? 2048,
         },
         stream: false,
