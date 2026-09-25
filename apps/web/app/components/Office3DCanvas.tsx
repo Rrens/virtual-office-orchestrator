@@ -2,8 +2,10 @@
 
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
-import { useMemo } from 'react';
-import { ReadyPlayerMeAvatar } from './ReadyPlayerMeAvatar';
+import { useMemo, useRef, useState } from 'react';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { AnimatedAgent } from './AnimatedAgent';
+import { OfficeMinimap } from './OfficeMinimap';
 import type { WSEvent } from '../../hooks/useProjectWebSocket';
 
 interface Agent3D {
@@ -15,7 +17,6 @@ interface Agent3D {
   color: string;
 }
 
-const ROOM_COLOR = '#1e293b';
 const DESK_COLOR = '#334155';
 
 const DEPARTMENT_ROOMS = [
@@ -40,11 +41,11 @@ const DEFAULT_AGENTS: Agent3D[] = [
 
 interface Props {
   events: WSEvent[];
-  activeAgentId?: string;
 }
 
 export function Office3DCanvas({ events }: Props) {
-  // Update agent status dynamically based on WS events
+  const controlsRef = useRef<OrbitControlsImpl>(null);
+
   const agentStates = useMemo(() => {
     const map = new Map<string, Agent3D>();
     DEFAULT_AGENTS.forEach((a) => map.set(a.role, { ...a }));
@@ -62,16 +63,38 @@ export function Office3DCanvas({ events }: Props) {
     return Array.from(map.values());
   }, [events]);
 
+  const activeWorkingCount = agentStates.filter(
+    (a) => a.status === 'working' || a.status === 'thinking'
+  ).length;
+
+  const handleTeleport = (targetPos: [number, number, number]) => {
+    if (controlsRef.current) {
+      controlsRef.current.target.set(targetPos[0], 0, targetPos[2]);
+      controlsRef.current.object.position.set(targetPos[0], targetPos[1], targetPos[2] + 8);
+      controlsRef.current.update();
+    }
+  };
+
   return (
     <div className="w-full h-full bg-slate-950 relative rounded-xl overflow-hidden border border-slate-800">
+      {/* Top Controls Overlay */}
       <div className="absolute top-3 left-3 z-10 bg-slate-900/80 backdrop-blur border border-slate-700/60 p-2.5 rounded-lg text-xs text-slate-300 space-y-1">
-        <p className="font-semibold text-white">🎮 3D Office Viewer</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-semibold text-white">🏢 3D Virtual Office</p>
+          <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-mono">
+            Active: {activeWorkingCount} agents
+          </span>
+        </div>
         <p className="text-[11px] text-slate-400">Left-click: Rotate | Right-click: Pan | Scroll: Zoom</p>
       </div>
 
+      {/* 2D Minimap Overlay */}
+      <OfficeMinimap onSelectRoom={handleTeleport} />
+
       <Canvas camera={{ position: [0, 12, 16], fov: 50 }}>
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[10, 15, 10]} intensity={1} castShadow />
+        {/* Dynamic Lighting: Intenser when agents are active */}
+        <ambientLight intensity={0.6 + activeWorkingCount * 0.08} />
+        <directionalLight position={[10, 15, 10]} intensity={1.2} castShadow />
 
         {/* Floor Base */}
         <mesh position={[0, -0.1, 0]}>
@@ -84,7 +107,7 @@ export function Office3DCanvas({ events }: Props) {
           <group key={i} position={room.pos}>
             <mesh position={[0, 0.05, 0]}>
               <boxGeometry args={room.size} />
-              <meshStandardMaterial color={room.color} opacity={0.6} transparent />
+              <meshStandardMaterial color={room.color} opacity={0.65} transparent />
             </mesh>
             <Text
               position={[0, 0.2, -room.size[2] / 2 + 0.3]}
@@ -97,7 +120,7 @@ export function Office3DCanvas({ events }: Props) {
           </group>
         ))}
 
-        {/* Agent Avatars & Desks */}
+        {/* Agent Desks & Animated Avatars */}
         {agentStates.map((agent) => (
           <group key={agent.id}>
             {/* Desk */}
@@ -106,24 +129,28 @@ export function Office3DCanvas({ events }: Props) {
               <meshStandardMaterial color={DESK_COLOR} />
             </mesh>
 
-            {/* Monitor */}
+            {/* Monitor with active screen glow */}
             <mesh position={[agent.position[0], 0.6, agent.position[2] - 0.2]}>
               <boxGeometry args={[0.5, 0.3, 0.05]} />
-              <meshStandardMaterial color="#0f172a" />
+              <meshStandardMaterial
+                color={agent.status === 'working' ? '#38bdf8' : '#0f172a'}
+                emissive={agent.status === 'working' ? '#0284c7' : '#000000'}
+                emissiveIntensity={agent.status === 'working' ? 0.8 : 0}
+              />
             </mesh>
 
-            {/* ReadyPlayerMe Avatar */}
-            <ReadyPlayerMeAvatar
+            {/* Animated Character Avatar */}
+            <AnimatedAgent
               role={agent.role}
               name={agent.name}
               status={agent.status}
               color={agent.color}
-              position={agent.position}
+              targetPosition={agent.position}
             />
           </group>
         ))}
 
-        <OrbitControls maxPolarAngle={Math.PI / 2 - 0.1} minDistance={5} maxDistance={30} />
+        <OrbitControls ref={controlsRef} maxPolarAngle={Math.PI / 2 - 0.1} minDistance={4} maxDistance={30} />
       </Canvas>
     </div>
   );
