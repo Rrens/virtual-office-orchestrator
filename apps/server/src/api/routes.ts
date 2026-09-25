@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { getAgentDefinitions, registerAgentDefinition, spawnAgentInstance } from '../agents/registry.js';
 import { createTask, getTaskById, updateTaskStatus } from '../tasks/service.js';
+import { workflowEngine } from '../workflows/engine.js';
+import { goalPlanner } from '../orchestrator/planner.js';
 import { prisma } from '../db.js';
 import type { AgentRole, TaskStatus } from '@virtual-office/shared';
 
@@ -52,6 +54,26 @@ export async function registerRoutes(app: FastifyInstance) {
 
     if (!project) return reply.status(404).send({ error: 'Project not found' });
     return project;
+  });
+
+  // Workflow & Planning
+  app.post('/api/projects/:id/plan', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project) return reply.status(404).send({ error: 'Project not found' });
+
+    const plan = await goalPlanner.plan(id, project.goal);
+    return plan;
+  });
+
+  app.post('/api/projects/:id/start', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const executionId = await workflowEngine.startProjectWorkflow(id);
+      return reply.status(201).send({ workflowExecutionId: executionId, message: 'Workflow started successfully' });
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // Agent Definitions & Instances

@@ -6,6 +6,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import { prisma } from './db.js';
 import { registerRoutes } from './api/routes.js';
 import { registerAllTools } from './tools/implementations/index.js';
+import { startTaskConsumer } from './workflows/task-consumer.js';
 
 const app = Fastify({
   logger: {
@@ -44,6 +45,11 @@ await registerRoutes(app);
 
 // Initialize tools
 registerAllTools();
+
+// Start Kafka task consumer (non-blocking)
+startTaskConsumer().catch((err) => {
+  app.log.warn(`[Kafka] Could not connect task consumer: ${err.message}`);
+});
 
 // Graceful shutdown
 app.addHook('onClose', async () => {
