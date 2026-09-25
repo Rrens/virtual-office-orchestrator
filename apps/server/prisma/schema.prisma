@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// Core Entities
+// -------------------------------------------------------------
+
+model Organization {
+  id        String    @id @default(uuid())
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  projects  Project[]
+
+  @@map("organizations")
+}
+
+model Project {
+  id                 String              @id @default(uuid())
+  organizationId     String              @map("organization_id")
+  name               String
+  goal               String
+  status             String              @default("draft") // draft, planning, running, paused, completed, cancelled
+  autonomyLevel      Int                 @default(1) @map("autonomy_level") // 0-4
+  budgetTokens       Int?                @map("budget_tokens")
+  usedTokens         Int                 @default(0) @map("used_tokens")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentInstances     AgentInstance[]
+  workflowExecutions WorkflowExecution[]
+  approvals          Approval[]
+
+  @@map("projects")
+}
+
+model Department {
+  id               String            @id @default(uuid())
+  name             String            @unique // executive, product, design, engineering, growth, sales, customer, data, operations
+  description      String
+  createdAt        DateTime          @default(now()) @map("created_at")
+  agentDefinitions AgentDefinition[]
+
+  @@map("departments")
+}
+
+model AgentDefinition {
+  id             String          @id @default(uuid())
+  role           String          @unique // backend-engineer, product-manager, etc.
+  departmentId   String          @map("department_id")
+  name           String
+  persona        String          @db.Text
+  modelTier      String          @map("model_tier") // tier1_ollama, tier2_9router, tier3_cloud
+  tools          String[]
+  permissions    String[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  department     Department      @relation(fields: [departmentId], references: [id])
+  agentInstances AgentInstance[]
+
+  @@map("agent_definitions")
+}
+
+model AgentInstance {
+  id            String          @id @default(uuid())
+  definitionId  String          @map("definition_id")
+  projectId     String          @map("project_id")
+  status        String          @default("idle") // idle, assigned, thinking, working, waiting, reviewing, completed, error, escalated
+  currentTaskId String?         @map("current_task_id")
+  avatarUrl     String?         @map("avatar_url")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  definition    AgentDefinition @relation(fields: [definitionId], references: [id])
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedTasks Task[]          @relation("TaskAssignedAgent")
+  agentRuns     AgentRun[]
+  artifacts     Artifact[]
+  approvals     Approval[]
+  reviews       Review[]
+
+  @@map("agent_instances")
+}
+
+model WorkflowExecution {
+  id         String     @id @default(uuid())
+  projectId  String     @map("project_id")
+  status     String     @default("pending") // pending, running, paused, completed, failed
+  dagJson    String     @map("dag_json") @db.Text
+  startedAt  DateTime?  @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks      Task[]
+
+  @@map("workflow_executions")
+}
+
+model Task {
+  id                    String              @id @default(uuid())
+  workflowExecutionId   String              @map("workflow_execution_id")
+  title                 String
+  description           String              @db.Text
+  agentRole             String              @map("agent_role")
+  assignedAgentId       String?             @map("assigned_agent_id")
+  status                String              @default("PENDING") // PENDING, QUEUED, ASSIGNED, RUNNING, REVIEW, APPROVED, COMPLETED, BLOCKED, CANCELLED, FAILED
+  retryCount            Int                 @default(0) @map("retry_count")
+  maxRetries            Int                 @default(3) @map("max_retries")
+  inputArtifacts        String[]            @map("input_artifacts")
+  outputArtifacts       String[]            @map("output_artifacts")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  workflowExecution     WorkflowExecution   @relation(fields: [workflowExecutionId], references: [id], onDelete: Cascade)
+  assignedAgent         AgentInstance?      @relation("TaskAssignedAgent", fields: [assignedAgentId], references: [id])
+  dependencies          TaskDependency[]    @relation("TaskDependencies")
+  dependentOn           TaskDependency[]    @relation("TaskDependentOn")
+  agentRuns             AgentRun[]
+  artifacts             Artifact[]
+  reviews               Review[]
+  approvals             Approval[]
+
+  @@map("tasks")
+}
+
+model TaskDependency {
+  taskId          String @map("task_id")
+  dependsOnTaskId String @map("depends_on_task_id")
+  task            Task   @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTask   Task   @relation("TaskDependentOn", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+model AgentRun {
+  id              String        @id @default(uuid())
+  taskId          String        @map("task_id")
+  agentInstanceId String        @map("agent_instance_id")
+  modelUsed       String        @map("model_used")
+  promptTokens    Int           @default(0) @map("prompt_tokens")
+  completionTokens Int          @default(0) @map("completion_tokens")
+  costEstimated   Float         @default(0.0) @map("cost_estimated")
+  durationMs      Int           @default(0) @map("duration_ms")
+  status          String        @default("running") // running, success, failed
+  errorMessage    String?       @map("error_message") @db.Text
+  createdAt       DateTime      @default(now()) @map("created_at")
+  task            Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentInstance   AgentInstance @relation(fields: [agentInstanceId], references: [id], onDelete: Cascade)
+  toolCalls       ToolCall[]
+
+  @@map("agent_runs")
+}
+
+model ToolCall {
+  id           String   @id @default(uuid())
+  agentRunId   String   @map("agent_run_id")
+  toolName     String   @map("tool_name")
+  inputJson    String   @map("input_json") @db.Text
+  outputJson   String?  @map("output_json") @db.Text
+  status       String   @default("running") // running, success, failed
+  errorMessage String?  @map("error_message") @db.Text
+  durationMs   Int      @default(0) @map("duration_ms")
+  createdAt    DateTime @default(now()) @map("created_at")
+  agentRun     AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@map("tool_calls")
+}
+
+model Artifact {
+  id              String        @id @default(uuid())
+  taskId          String        @map("task_id")
+  agentInstanceId String        @map("agent_instance_id")
+  type            String        // code, documentation, design, report, config, test, other
+  name            String
+  path            String
+  mimeType        String        @map("mime_type")
+  sizeBytes       Int           @default(0) @map("size_bytes")
+  content         String?       @db.Text
+  createdAt       DateTime      @default(now()) @map("created_at")
+  task            Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agentInstance   AgentInstance @relation(fields: [agentInstanceId], references: [id], onDelete: Cascade)
+
+  @@map("artifacts")
+}
+
+model Review {
+  id              String        @id @default(uuid())
+  taskId          String        @map("task_id")
+  reviewerAgentId String        @map("reviewer_agent_id")
+  result          String        // approved, approved_with_changes, rejected
+  feedback        String        @db.Text
+  createdAt       DateTime      @default(now()) @map("created_at")
+  task            Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  reviewerAgent   AgentInstance @relation(fields: [reviewerAgentId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+model Approval {
+  id              String        @id @default(uuid())
+  projectId       String        @map("project_id")
+  taskId          String?       @map("task_id")
+  agentInstanceId String        @map("agent_instance_id")
+  title           String
+  description     String        @db.Text
+  status          String        @default("pending") // pending, approved, rejected
+  decidedBy       String?       @map("decided_by")
+  decidedAt       DateTime?     @map("decided_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task            Task?         @relation(fields: [taskId], references: [id])
+  agentInstance   AgentInstance @relation(fields: [agentInstanceId], references: [id], onDelete: Cascade)
+
+  @@map("approvals")
+}
+
+model EventLog {
+  id        String   @id @default(uuid())
+  type      String   // agent.created, task.completed, etc.
+  projectId String   @map("project_id")
+  payload   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("event_logs")
+}
+
+model MemoryStore {
+  id        String   @id @default(uuid())
+  scope     String   // working, project, agent, organization
+  scopeId   String   @map("scope_id")
+  key       String
+  value     String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([scope, scopeId, key])
+  @@map("memory_stores")
+}
