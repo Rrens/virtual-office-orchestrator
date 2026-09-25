@@ -142,11 +142,11 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 - [x] Next.js 15 web app scaffolded
 
 ### PHASE 2 — Agent Runtime & Tools
-- [ ] Multi-tier model router (Ollama / 9Router / Cloud fallback)
-- [ ] Tool gateway with RBAC + parameter validator + audit log
-- [ ] Tool implementations: `filesystem`, `git`, `terminal.sandbox`, `browser.fetch`
-- [ ] Agent state machine (idle → assigned → working → reviewing → completed)
-- [ ] Docker sandbox executor for code execution tools
+- [x] Multi-tier model router (Ollama / 9Router / Cloud fallback)
+- [x] Tool gateway with RBAC + parameter validator + audit log
+- [x] Tool implementations: `filesystem`, `git`, `terminal.sandbox`, `browser.fetch`
+- [x] Agent state machine (idle → assigned → working → reviewing → completed)
+- [ ] Docker sandbox executor for code execution tools (deferred to Phase 2.x)
 
 ### PHASE 3 — Orchestrator & Workflow Engine
 - [ ] Dynamic goal parser (LLM-generated DAG)
@@ -197,6 +197,7 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 |---|---|---|
 | 2026-09-25 | Session 1 | Read PRD.md + ai-virtual-company-md docs, defined full architecture, ADRs, agent registry (30 agents), 3D Virtual Office upgrade (ReadyPlayerMe + Three.js), PRD.md updated (sections 23/24/38/40), generated agent.md + work_summary.md |
 | 2026-09-25 | Session 2 (Phase 1) | Monorepo setup (Turborepo), Fastify backend, Prisma schema (13 models) migrated & seeded with 30 agents, Kafka event helpers, Next.js 15 web shell, all pushed to branch dev |
+| 2026-09-25 | Session 3 (Phase 2) | Multi-tier Model Router (Ollama/9Router/Cloud fallback), Tool Gateway with RBAC & audit trail, 5 tool implementations (read/write/git/sandbox/fetch), Agent State Machine lifecycle |
 
 ---
 

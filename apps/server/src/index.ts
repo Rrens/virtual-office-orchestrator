@@ -5,6 +5,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { prisma } from './db.js';
 import { registerRoutes } from './api/routes.js';
+import { registerAllTools } from './tools/implementations/index.js';
 
 const app = Fastify({
   logger: {
@@ -40,6 +41,9 @@ app.get('/health', async () => {
 
 // API routes
 await registerRoutes(app);
+
+// Initialize tools
+registerAllTools();
 
 // Graceful shutdown
 app.addHook('onClose', async () => {
