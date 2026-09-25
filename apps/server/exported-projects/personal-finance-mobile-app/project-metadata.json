@@ -1,0 +1,35 @@
+{
+  "id": "ee3046d2-d59e-480a-80f7-513f5683ffe4",
+  "name": "Personal Finance Mobile App",
+  "goal": "Design and build a mobile application that helps users track income,\nexpenses, budgets, savings goals, and monthly financial reports. The\nproduct should provide a simple dashboard, transaction management,\nbudget alerts, and financial insights while protecting sensitive user\ndata.",
+  "status": "completed",
+  "autonomyLevel": 2,
+  "usedTokens": 2171,
+  "exportedAt": "2026-09-25T20:15:10.637Z",
+  "agents": [
+    {
+      "name": "Senior Backend Engineer",
+      "role": "backend-engineer",
+      "status": "reviewing"
+    },
+    {
+      "name": "Design System Lead",
+      "role": "design-system-designer",
+      "status": "reviewing"
+    }
+  ],
+  "tasks": [
+    {
+      "title": "Develop the application",
+      "agentRole": "backend-engineer",
+      "status": "COMPLETED",
+      "artifactCount": 2
+    },
+    {
+      "title": "Design and build a mobile application",
+      "agentRole": "design-system-designer",
+      "status": "COMPLETED",
+      "artifactCount": 1
+    }
+  ]
+}

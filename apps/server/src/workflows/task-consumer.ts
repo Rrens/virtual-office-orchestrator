@@ -159,18 +159,62 @@ async function executeTask(task: any, agent: any): Promise<void> {
   });
 
   try {
+    const isCodeRole = ['backend-engineer', 'frontend-engineer', 'mobile-engineer', 'devops', 'qa-engineer', 'security-engineer', 'ai-engineer', 'data-engineer', 'performance-engineer'].includes(task.agentRole);
+    const isDesignRole = ['ui-ux-designer', 'design-system-designer', 'brand-designer'].includes(task.agentRole);
+
+    const systemPrompt = isCodeRole
+      ? `You are a ${agent.definition.name}. ${agent.definition.persona}
+
+CRITICAL RULES:
+- You MUST output ACTUAL, RUNNABLE code — not descriptions, not explanations.
+- Every expected artifact must be a real file with complete implementation.
+- Use proper file headers with the filename as a comment.
+- Output format: write each file as a fenced code block with the filename above it.
+- Example format:
+  ## src/api/users.ts
+  \`\`\`typescript
+  import express from 'express';
+  // ... full implementation
+  \`\`\`
+- No placeholders like "// implement this later". Write the full implementation.
+- No abstract descriptions. Only working code.`
+      : isDesignRole
+      ? `You are a ${agent.definition.name}. ${agent.definition.persona}
+
+CRITICAL RULES:
+- Output a complete, detailed design specification document.
+- Include: color palette (hex codes), typography (font names, sizes, weights), spacing system, component specs, and wireframe descriptions.
+- For UI components, describe exact layout, dimensions, and interactions.
+- Be specific and actionable — a developer must be able to implement this directly.`
+      : `You are a ${agent.definition.name}. ${agent.definition.persona}
+
+CRITICAL RULES:
+- Output a complete, detailed, professional document.
+- Be specific with data, metrics, decisions, and recommendations.
+- No vague statements. Every claim must have supporting detail.
+- Format with clear headers, bullet points, and tables where appropriate.`;
+
+    const userPrompt = `# Task: ${task.title}
+
+## Description
+${task.description}
+
+## Expected Output Files
+${task.outputArtifacts.map((a: string) => `- ${a}`).join('\n')}
+
+## Instructions
+${isCodeRole
+  ? `Write the complete, production-ready implementation for each expected file. Include all imports, error handling, and business logic. Do NOT write pseudocode or descriptions.`
+  : `Write a complete, detailed, professional deliverable for this task.`}
+
+Deliver the full output now.`;
+
     const response = await modelRouter.routeByTier(selectedTier, {
       messages: [
-        {
-          role: 'system',
-          content: `You are a ${agent.definition.name}. ${agent.definition.persona}`,
-        },
-        {
-          role: 'user',
-          content: `Task: ${task.title}\n\n${task.description}\n\nExpected output artifacts: ${task.outputArtifacts.join(', ')}.\n\nAnalyze the task and provide your professional output.`,
-        },
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
       ],
-      temperature: 0.4,
+      temperature: 0.3,
       agentRole: task.agentRole,
       taskId: task.id,
     });

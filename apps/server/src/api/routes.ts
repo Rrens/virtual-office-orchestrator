@@ -14,6 +14,7 @@ import { requireFounder } from './auth.js';
 import type { AgentRole, TaskStatus, MemoryScope } from '@virtual-office/shared';
 
 import { readLogs, listLogDates, type LogLevel } from '../utils/logger.js';
+import { exportProject } from '../utils/exporter.js';
 
 export async function registerRoutes(app: FastifyInstance) {
   // Organizations & Projects
@@ -425,5 +426,21 @@ export async function registerRoutes(app: FastifyInstance) {
     const dates = await listLogDates();
 
     return { date: date || new Date().toISOString().split('T')[0], dates, logs };
+  });
+
+  // Export project as ZIP download
+  app.post('/api/projects/:id/export', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const result = await exportProject(id);
+      return reply
+        .header('Content-Type', 'application/zip')
+        .header('Content-Disposition', `attachment; filename="${result.zipFileName}"`)
+        .header('Content-Length', result.zipBuffer.length.toString())
+        .header('X-Files-Written', result.filesWritten.toString())
+        .send(result.zipBuffer);
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 }

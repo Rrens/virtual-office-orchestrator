@@ -52,6 +52,41 @@ export default function HomePage() {
   const [inspectedAgentId, setInspectedAgentId] = useState<string | null>(null);
   const [artifactView, setArtifactView] = useState<{ taskId: string; taskTitle: string } | null>(null);
   const [showLogViewer, setShowLogViewer] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    if (!selectedProjectId) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`http://localhost:4000/api/projects/${selectedProjectId}/export`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const filesWritten = res.headers.get('X-Files-Written') ?? '?';
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const nameMatch = disposition.match(/filename="(.+?)"/);
+      const fileName = nameMatch ? nameMatch[1] : `${selectedProjectId}.zip`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert(`✅ Download dimulai!\nFile: ${fileName}\nTotal: ${filesWritten} file`);
+    } catch (err) {
+      alert(`Export gagal: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const { events, connected } = useProjectWebSocket(selectedProjectId);
 
@@ -169,6 +204,22 @@ export default function HomePage() {
         >
           📜 Logs
         </button>
+        {selectedProjectId && (
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            style={{
+              padding: '5px 12px', borderRadius: 99,
+              border: '1px solid var(--line)',
+              background: 'var(--panel)', backdropFilter: 'blur(8px)',
+              color: exporting ? 'var(--faint)' : 'var(--ok)', fontSize: 11,
+              cursor: exporting ? 'default' : 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            {exporting ? 'Exporting...' : '📁 Export'}
+          </button>
+        )}
       </div>
 
       {/* Project List Popover */}
