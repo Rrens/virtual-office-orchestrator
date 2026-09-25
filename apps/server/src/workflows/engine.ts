@@ -69,8 +69,9 @@ export class WorkflowEngine {
       }
     }
 
-    // Spawn required AgentInstances for the project
-    const requiredRoles = Array.from(new Set(plan.tasks.map((t) => t.agentRole))) as AgentRole[];
+    // Spawn required AgentInstances for the project (including sub-orchestrator leads and qa-engineer)
+    const subOrchestratorRoles = (plan.milestones ?? []).map((m) => m.leadRole);
+    const requiredRoles = Array.from(new Set([...plan.tasks.map((t) => t.agentRole), ...subOrchestratorRoles, 'qa-engineer'])) as AgentRole[];
     for (const role of requiredRoles) {
       const existing = await prisma.agentInstance.findFirst({
         where: { projectId, definition: { role } },
@@ -86,6 +87,10 @@ export class WorkflowEngine {
       data: { status: 'running' },
     });
 
+    const milestoneDesc = plan.milestones?.length
+      ? `${plan.milestones.length} divisi (${plan.milestones.map((m) => m.department).join(', ')}) via Sub-Orchestrator`
+      : `${plan.departments.join(', ')}`;
+
     await publishEvent({
       eventId: randomUUID(),
       timestamp: new Date().toISOString(),
@@ -93,7 +98,7 @@ export class WorkflowEngine {
       workflowExecutionId: execution.id,
       type: 'workflow.started',
       agentRole: 'orchestrator',
-      message: `Chief Orchestrator memulai workflow (${plan.tasks.length} task).`,
+      message: `Chief Orchestrator (Budi) mendelegasikan ke ${milestoneDesc} — total ${plan.tasks.length} task terdistribusi.`,
       totalTasks: plan.tasks.length,
     });
 

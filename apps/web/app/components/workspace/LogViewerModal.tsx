@@ -8,6 +8,8 @@ interface LogEntry {
   level: 'info' | 'warn' | 'error' | 'debug';
   module: string;
   message: string;
+  model?: string;
+  agentRole?: string;
   data?: any;
 }
 
@@ -306,6 +308,24 @@ export function LogViewerModal({ isOpen, onClose }: Props) {
                   <span style={{ color: '#38bdf8', fontWeight: 600, flexShrink: 0 }}>
                     [{log.module}]
                   </span>
+
+                  {/* Model Tag if present */}
+                  {log.model && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: '1px 6px',
+                        borderRadius: 4,
+                        background: 'rgba(168, 85, 247, 0.2)',
+                        color: '#c084fc',
+                        border: '1px solid rgba(168, 85, 247, 0.4)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      🤖 {log.model}
+                    </span>
+                  )}
 
                   {/* Message & Data */}
                   <div style={{ flex: 1, minWidth: 0, wordBreak: 'break-word' }}>

@@ -1,5 +1,8 @@
 'use client';
 
+import { useState } from 'react';
+import { AGENT_REGISTRY_30, DEPT_THEMES } from '../office/OfficeWaypoints';
+
 interface Agent {
   id: string;
   name: string;
@@ -16,121 +19,158 @@ interface Props {
   onSelectAgent?: (agentId: string) => void;
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  'orchestrator': 'var(--pingot)',
-  'backend-engineer': 'var(--zaki)',
-  'ui-ux-designer': 'var(--lulu)',
-  'qa-engineer': 'var(--risko)',
-};
-
 const STATUS_BADGES: Record<string, { label: string; color: string }> = {
-  'idle': { label: 'Idle', color: 'var(--faint)' },
-  'working': { label: 'Bekerja', color: 'var(--ok)' },
-  'thinking': { label: 'Berpikir', color: 'var(--warn)' },
-  'blocked': { label: 'Terhambat', color: 'var(--bad)' },
-  'completed': { label: 'Selesai', color: 'var(--ok)' },
+  idle:      { label: 'Santai',   color: 'var(--faint)' },
+  working:   { label: 'Bekerja',  color: 'var(--ok)' },
+  thinking:  { label: 'Mikir',    color: 'var(--warn)' },
+  blocked:   { label: 'Tertahan', color: 'var(--bad)' },
+  completed: { label: 'Selesai',  color: 'var(--ok)' },
 };
 
 export function AgentStatusDock({ agents, onSelectAgent }: Props) {
+  const [filterDept, setFilterDept] = useState<string | null>(null);
+
+  // Merge full 30 agent registry with active runtime stats
+  const fullAgents = AGENT_REGISTRY_30.map((reg) => {
+    const active = agents.find((a) => a.role === reg.role);
+    return {
+      id: reg.role,
+      role: reg.role,
+      name: reg.name,
+      title: reg.title,
+      dept: reg.dept,
+      status: active?.status ?? 'idle',
+      currentTask: active?.currentTask,
+      tokensUsed: active?.tokensUsed ?? 0,
+      actionsCount: active?.actionsCount ?? 0,
+      assignedAgentId: active?.assignedAgentId,
+    };
+  });
+
+  const filtered = filterDept ? fullAgents.filter((a) => a.dept === filterDept) : fullAgents;
+
   return (
-    <footer style={{
-      height: 110,
-      borderTop: '1px solid var(--line)',
-      background: 'var(--panel)',
-      backdropFilter: 'blur(10px)',
-      display: 'flex',
-      alignItems: 'center',
-      padding: '0 16px',
-      gap: 12,
-      overflowX: 'auto',
-      flexShrink: 0,
-    }}>
-      {agents.map((agent) => {
-        const color = AGENT_COLORS[agent.role] ?? '#6f6a62';
-        const badge = STATUS_BADGES[agent.status] ?? { label: agent.status, color: 'var(--muted)' };
+    <footer
+      style={{
+        height: 105,
+        borderTop: '1px solid var(--line)',
+        background: 'var(--panel)',
+        backdropFilter: 'blur(10px)',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '6px 16px 8px',
+        flexShrink: 0,
+        gap: 6,
+      }}
+    >
+      {/* Mini Dept Filter Line */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto', flexShrink: 0 }}>
+        <button
+          onClick={() => setFilterDept(null)}
+          className="chip"
+          style={{
+            cursor: 'pointer',
+            fontSize: 9.5,
+            padding: '1px 6px',
+            background: filterDept === null ? '#1e293b' : '#fff',
+            color: filterDept === null ? '#fff' : 'var(--muted)',
+          }}
+        >
+          Semua (30)
+        </button>
+        {Object.entries(DEPT_THEMES).map(([deptKey, theme]) => {
+          const count = fullAgents.filter((a) => a.dept === deptKey).length;
+          const isSelected = filterDept === deptKey;
+          return (
+            <button
+              key={deptKey}
+              onClick={() => setFilterDept(isSelected ? null : deptKey)}
+              className="chip"
+              style={{
+                cursor: 'pointer',
+                fontSize: 9.5,
+                padding: '1px 6px',
+                background: isSelected ? theme.color : '#fff',
+                color: isSelected ? '#fff' : 'var(--muted)',
+                borderColor: isSelected ? theme.color : 'var(--line-strong)',
+              }}
+            >
+              {theme.name} ({count})
+            </button>
+          );
+        })}
+      </div>
 
-        return (
-          <button
-            key={agent.id}
-            onClick={() => agent.assignedAgentId && onSelectAgent?.(agent.assignedAgentId)}
-            style={{
-              flex: '1 0 220px',
-              maxWidth: 260,
-              padding: 12,
-              borderRadius: 12,
-              border: '1px solid var(--line)',
-              background: '#ffffff',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = color;
-              e.currentTarget.style.boxShadow = '0 4px 16px rgba(60,45,25,0.12)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--line)';
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          >
-            {/* Agent Avatar Circle */}
-            <div style={{
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: color,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 16,
-              fontWeight: 800,
-              color: '#ffffff',
-              flexShrink: 0,
-            }}>
-              {agent.name.charAt(0)}
-            </div>
-
-            {/* Agent Info */}
-            <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {agent.name}
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {agent.currentTask || 'Tidak ada task aktif'}
-              </div>
-
-              {/* Status Badge */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="chip" style={{ fontSize: 9 }}>
-                  <div className="chip-dot" style={{ backgroundColor: badge.color }} />
-                  {badge.label}
-                </span>
-                <span style={{ fontSize: 9, color: 'var(--faint)', fontFamily: 'monospace' }}>
-                  {agent.actionsCount} aksi
-                </span>
-                <span style={{ fontSize: 9, color: 'var(--faint)', fontFamily: 'monospace' }}>
-                  {(agent.tokensUsed / 1000).toFixed(1)}k tok
-                </span>
-              </div>
-            </div>
-          </button>
-        );
-      })}
-
-      {agents.length === 0 && (
-        <div style={{
-          flex: 1,
+      {/* Agents Scroll Track */}
+      <div
+        style={{
           display: 'flex',
+          gap: 8,
+          overflowX: 'auto',
+          flex: 1,
           alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--faint)',
-          fontSize: 12,
-        }}>
-          Tidak ada agen aktif saat ini.
-        </div>
-      )}
+          paddingBottom: 2,
+        }}
+      >
+        {filtered.map((agent) => {
+          const dept = DEPT_THEMES[agent.dept] ?? DEPT_THEMES.operations;
+          const badge = STATUS_BADGES[agent.status] ?? STATUS_BADGES.idle;
+          const isBusy = agent.status === 'working' || agent.status === 'thinking';
+
+          return (
+            <button
+              key={agent.role}
+              onClick={() => agent.assignedAgentId && onSelectAgent?.(agent.assignedAgentId)}
+              style={{
+                flex: '0 0 190px',
+                padding: '6px 10px',
+                borderRadius: 10,
+                border: `1px solid ${isBusy ? dept.color : 'var(--line)'}`,
+                background: isBusy ? '#faf8f5' : '#ffffff',
+                cursor: agent.assignedAgentId ? 'pointer' : 'default',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                textAlign: 'left',
+                boxShadow: isBusy ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+              }}
+            >
+              {/* Avatar circle */}
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: dept.color,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                {agent.name.charAt(0)}
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {agent.name}
+                  </span>
+                  <span style={{ fontSize: 9, color: badge.color, fontWeight: 600 }}>
+                    {badge.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: 9.5, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {agent.title}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </footer>
   );
 }

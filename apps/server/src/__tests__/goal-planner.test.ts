@@ -60,8 +60,9 @@ describe('GoalPlanner', () => {
     });
 
     const plan = await planner.plan('proj-3', 'Build API');
-    expect(plan.tasks).toHaveLength(1);
+    expect(plan.tasks.length).toBeGreaterThanOrEqual(1);
     expect(plan.tasks[0].agentRole).toBe('product-manager');
+    expect(plan.milestones).toBeDefined();
   });
 
   it('returns fallback plan when LLM returns invalid JSON', async () => {

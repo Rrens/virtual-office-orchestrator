@@ -1,8 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ModelRouter } from '../models/router.js';
 
 describe('ModelRouter', () => {
   const router = new ModelRouter();
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env.NINEROUTER_API_KEY = 'mock-key';
+    process.env.OPENAI_API_KEY = 'mock-key';
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
 
   it('selects tier3_cloud for high-risk roles', () => {
     expect(router.selectTier('security-engineer', 'low')).toBe('tier3_cloud');

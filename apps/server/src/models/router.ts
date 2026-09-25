@@ -39,8 +39,9 @@ export class ModelRouter {
       return 'tier1_ollama';
     }
 
-    if (complexity === 'high' && hasNineRouter) return 'tier2_9router';
     if (complexity === 'high' && hasCloud) return 'tier3_cloud';
+    if (complexity === 'high' && hasNineRouter) return 'tier2_9router';
+    if (complexity === 'medium' && hasNineRouter) return 'tier2_9router';
 
     // Default: prefer Ollama locally
     return 'tier1_ollama';

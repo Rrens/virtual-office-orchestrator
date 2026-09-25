@@ -8,14 +8,13 @@ import * as THREE from 'three';
 import { OfficeEnvironment } from './OfficeEnvironment';
 import { AgentCharacter } from './AgentCharacter';
 import {
-  initBehaviors,
-  tickBehaviors,
-  applyWSEventToBehaviors,
+  initBehaviors30,
+  tickBehaviors30,
   type AgentBehavior,
-  type AgentId,
   type BehaviorState,
+  getHomeDeskByRole,
 } from './AgentBehaviorController';
-import { OFFICE_WAYPOINTS, getHomeDesk } from './AgentBehaviorController';
+import { AGENT_REGISTRY_30, OFFICE_WAYPOINTS, DEPT_THEMES } from './OfficeWaypoints';
 import type { WSEvent } from '../../../hooks/useProjectWebSocket';
 
 interface Props {
@@ -23,32 +22,17 @@ interface Props {
   onSelectAgent?: (role: string) => void;
 }
 
-const AGENT_NAMES: Record<AgentId, string> = {
-  pingot: 'Pingot',
-  zaki: 'Zaki',
-  lulu: 'Lulu',
-  risko: 'Risko',
-};
-
-const AGENT_ROLES: Record<AgentId, string> = {
-  pingot: 'orchestrator',
-  zaki: 'backend-engineer',
-  lulu: 'ui-ux-designer',
-  risko: 'qa-engineer',
-};
-
 function SimulationLoop({
   behaviorsRef,
   setBehaviorsState,
 }: {
-  behaviorsRef: React.MutableRefObject<Record<AgentId, AgentBehavior>>;
-  setBehaviorsState: React.Dispatch<React.SetStateAction<Record<AgentId, AgentBehavior>>>;
+  behaviorsRef: React.MutableRefObject<Record<string, AgentBehavior>>;
+  setBehaviorsState: React.Dispatch<React.SetStateAction<Record<string, AgentBehavior>>>;
 }) {
   const tickAccum = useRef(0);
 
   useFrame((_, delta) => {
-    // Tick at 30-60fps
-    behaviorsRef.current = tickBehaviors(behaviorsRef.current, delta);
+    behaviorsRef.current = tickBehaviors30(behaviorsRef.current, delta);
 
     tickAccum.current += delta;
     if (tickAccum.current > 0.05) {
@@ -60,73 +44,105 @@ function SimulationLoop({
   return null;
 }
 
-function CinematicCamera({ active }: { active: boolean }) {
-  useFrame(({ clock, camera }) => {
-    if (!active) return;
-    const t = clock.getElapsedTime() * 0.1;
-    camera.position.x = Math.sin(t) * 16;
-    camera.position.z = Math.cos(t) * 16;
-    camera.position.y = 11 + Math.sin(t * 0.3) * 2;
-    camera.lookAt(0, 0, 0);
-  });
-  return null;
-}
-
 export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
-  const [cinematic, setCinematic] = useState(false);
+  const [selectedDept, setSelectedDept] = useState<string | null>(null);
 
-  // Behavior state
-  const behaviorsRef = useRef<Record<AgentId, AgentBehavior>>(initBehaviors());
-  const [behaviors, setBehaviors] = useState<Record<AgentId, AgentBehavior>>(behaviorsRef.current);
+  const behaviorsRef = useRef<Record<string, AgentBehavior>>(initBehaviors30());
+  const [behaviors, setBehaviors] = useState<Record<string, AgentBehavior>>(behaviorsRef.current);
 
-  // Apply new incoming WS events
+  // Sync real-time WebSocket events to behaviors
   useEffect(() => {
     if (!events.length) return;
     const latest = events[0];
     const role = String(latest.agentRole ?? latest.role ?? '');
-    behaviorsRef.current = applyWSEventToBehaviors(
-      behaviorsRef.current,
-      latest.type ?? '',
-      role
-    );
-    setBehaviors({ ...behaviorsRef.current });
+    if (!role || !behaviorsRef.current[role]) return;
+
+    const next = { ...behaviorsRef.current };
+    const b = { ...next[role] };
+
+    if (latest.type?.includes('working') || latest.type === 'task.assigned' || latest.type === 'task.started') {
+      b.state = 'working';
+      b.targetPos = getHomeDeskByRole(role);
+      b.message = 'Sedang ngerjain task...';
+    } else if (latest.type?.includes('thinking')) {
+      b.state = 'thinking';
+      b.targetPos = getHomeDeskByRole(role);
+      b.message = 'Mikir solusi...';
+    } else if (latest.type?.includes('review') || latest.type === 'approval.requested') {
+      b.state = 'walking';
+      b.targetPos = OFFICE_WAYPOINTS.MEETING_ROOM_1;
+      (b as any)._nextState = 'meeting';
+      b.message = 'QA Review session!';
+    } else if (latest.type?.includes('completed') || latest.type === 'approval.approved') {
+      b.state = 'success';
+      b.targetPos = getHomeDeskByRole(role);
+      b.message = 'Task selesai & disetujui! ✓';
+    } else if (latest.type?.includes('failed')) {
+      b.state = 'error';
+      b.targetPos = getHomeDeskByRole(role);
+      b.message = 'Ada bug/error! ✕';
+    }
+
+    next[role] = b;
+    behaviorsRef.current = next;
+    setBehaviors({ ...next });
   }, [events]);
 
-  // Quick action triggers for user
-  const triggerCoffeeBreak = (id: AgentId) => {
+  // Teleport/Focus Camera to Department
+  const focusDept = (deptKey: string) => {
+    setSelectedDept(deptKey);
+    if (!controlsRef.current) return;
+
+    const DEPT_CAMERAS: Record<string, { pos: [number, number, number]; target: [number, number, number] }> = {
+      executive:   { pos: [-16, 12, -7],  target: [-16, 0, -14] },
+      product:     { pos: [-2, 12, -7],   target: [-2, 0, -14] },
+      design:      { pos: [14, 12, -7],   target: [14, 0, -14] },
+      engineering: { pos: [-10, 16, 3],   target: [-10, 0, -4] },
+      growth:      { pos: [12, 14, 3],    target: [12, 0, -4] },
+      sales:       { pos: [-14, 14, 14],  target: [-14, 0, 7] },
+      customer:    { pos: [-2, 14, 14],   target: [-2, 0, 7] },
+      data:        { pos: [11, 14, 14],   target: [11, 0, 7] },
+      leisure:     { pos: [0, 14, 25],    target: [0, 0, 16] },
+    };
+
+    const cam = DEPT_CAMERAS[deptKey] ?? { pos: [0, 32, 28], target: [0, 0, 0] };
+    controlsRef.current.target.set(...cam.target);
+    controlsRef.current.object.position.set(...cam.pos);
+    controlsRef.current.update();
+  };
+
+  // Leisure manual triggers
+  const triggerActivity = (activity: BehaviorState, message: string) => {
     const next = { ...behaviorsRef.current };
-    next[id].state = 'walking';
-    next[id].targetPos = OFFICE_WAYPOINTS.COFFEE_BAR;
-    (next[id] as unknown as { _nextState: BehaviorState })._nextState = 'coffee_break';
-    next[id].message = 'Ngopi bentar...';
+    const candidates = AGENT_REGISTRY_30.filter((a) => next[a.role]?.state === 'idle');
+    if (!candidates.length) return;
+
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    next[chosen.role].state = 'walking';
+    (next[chosen.role] as any)._nextState = activity;
+    next[chosen.role].message = message;
+
+    if (activity === 'playing_billiard') {
+      next[chosen.role].targetPos = OFFICE_WAYPOINTS.BILLIARD_PLAYER_1;
+    } else if (activity === 'playing_guitar') {
+      next[chosen.role].targetPos = OFFICE_WAYPOINTS.MUSIC_GUITAR;
+    } else if (activity === 'playing_piano') {
+      next[chosen.role].targetPos = OFFICE_WAYPOINTS.MUSIC_PIANO;
+    } else if (activity === 'playing_drums') {
+      next[chosen.role].targetPos = OFFICE_WAYPOINTS.MUSIC_DRUMS;
+    } else if (activity === 'gaming_ps5') {
+      next[chosen.role].targetPos = OFFICE_WAYPOINTS.PS5_COUCH_CENTER;
+    } else if (activity === 'coffee_break') {
+      next[chosen.role].targetPos = OFFICE_WAYPOINTS.COFFEE_BAR;
+    }
+
     behaviorsRef.current = next;
     setBehaviors({ ...next });
   };
 
-  const triggerPS5 = (id: AgentId) => {
-    const next = { ...behaviorsRef.current };
-    next[id].state = 'walking';
-    next[id].targetPos = OFFICE_WAYPOINTS.PS5_COUCH_CENTER;
-    (next[id] as unknown as { _nextState: BehaviorState })._nextState = 'gaming_ps5';
-    next[id].message = 'Main FIFA dulu bro!';
-    behaviorsRef.current = next;
-    setBehaviors({ ...next });
-  };
-
-  const triggerBackToDesk = (id: AgentId) => {
-    const next = { ...behaviorsRef.current };
-    next[id].state = 'walking';
-    next[id].targetPos = getHomeDesk(id);
-    (next[id] as unknown as { _nextState: BehaviorState })._nextState = 'working';
-    next[id].message = 'Fokus ngoding!';
-    behaviorsRef.current = next;
-    setBehaviors({ ...next });
-  };
-
-  const agentList: AgentId[] = ['pingot', 'zaki', 'lulu', 'risko'];
-  const workingCount = agentList.filter((id) =>
-    ['working', 'typing', 'thinking'].includes(behaviors[id]?.state ?? '')
+  const workingCount = AGENT_REGISTRY_30.filter((a) =>
+    ['working', 'typing', 'thinking'].includes(behaviors[a.role]?.state ?? '')
   ).length;
 
   return (
@@ -136,127 +152,195 @@ export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
         height: '100%',
         borderRadius: 14,
         overflow: 'hidden',
-        background: '#d6cfc4',
+        background: '#c5baa9',
         position: 'relative',
         border: '1px solid var(--line)',
       }}
     >
-      {/* HUD Top Bar */}
+      {/* HUD Top Bar: Department View Tabs */}
       <div
         style={{
           position: 'absolute',
-          top: 12,
-          left: 12,
+          top: 10,
+          left: 10,
+          right: 10,
           zIndex: 10,
-          background: 'var(--panel)',
-          border: '1px solid var(--line)',
-          borderRadius: 10,
-          padding: '6px 12px',
-          fontSize: 11,
-          color: 'var(--muted)',
-          backdropFilter: 'blur(8px)',
           display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          gap: 10,
+          pointerEvents: 'none',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div
-            className="chip-dot live-dot"
-            style={{ backgroundColor: workingCount > 0 ? 'var(--ok)' : 'var(--faint)' }}
-          />
-          <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: 12 }}>Software House 3D</span>
-        </div>
-        <span className="chip">{workingCount}/4 working</span>
-        <button
-          onClick={() => setCinematic((v) => !v)}
+        {/* Dept Switcher Pills */}
+        <div
           style={{
-            fontSize: 10,
-            padding: '2px 8px',
-            borderRadius: 99,
-            border: '1px solid var(--line-strong)',
-            background: cinematic ? 'var(--text)' : 'transparent',
-            color: cinematic ? '#fff' : 'var(--muted)',
-            cursor: 'pointer',
-            fontWeight: 600,
+            background: 'rgba(255, 255, 255, 0.92)',
+            backdropFilter: 'blur(8px)',
+            borderRadius: 10,
+            padding: '4px 8px',
+            display: 'flex',
+            gap: 4,
+            overflowX: 'auto',
+            border: '1px solid #d5cabb',
+            pointerEvents: 'auto',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
           }}
         >
-          {cinematic ? 'Cinematic ON' : 'Cinematic'}
-        </button>
+          <button
+            onClick={() => { setSelectedDept(null); if (controlsRef.current) { controlsRef.current.target.set(0, 0, 0); controlsRef.current.object.position.set(0, 32, 28); controlsRef.current.update(); } }}
+            className="chip"
+            style={{ cursor: 'pointer', background: selectedDept === null ? '#1e293b' : '#fff', color: selectedDept === null ? '#fff' : '#475569' }}
+          >
+            🏢 Seluruh Kantor (30 Agen)
+          </button>
+          {Object.entries(DEPT_THEMES).map(([deptKey, theme]) => (
+            <button
+              key={deptKey}
+              onClick={() => focusDept(deptKey)}
+              className="chip"
+              style={{
+                cursor: 'pointer',
+                background: selectedDept === deptKey ? theme.color : '#fff',
+                color: selectedDept === deptKey ? '#fff' : '#475569',
+                borderColor: selectedDept === deptKey ? theme.color : '#cbd5e1',
+                fontSize: 10.5,
+              }}
+            >
+              {theme.name}
+            </button>
+          ))}
+          <button
+            onClick={() => focusDept('leisure')}
+            className="chip"
+            style={{ cursor: 'pointer', background: selectedDept === 'leisure' ? '#b45309' : '#fff', color: selectedDept === 'leisure' ? '#fff' : '#b45309', fontWeight: 700 }}
+          >
+            🎱 Studio Musik & Billiard
+          </button>
+        </div>
+
+        {/* Live Active Pill */}
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.92)',
+            backdropFilter: 'blur(8px)',
+            borderRadius: 10,
+            padding: '6px 12px',
+            border: '1px solid #d5cabb',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 11,
+            pointerEvents: 'auto',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+          }}
+        >
+          <div className="chip-dot live-dot" style={{ backgroundColor: 'var(--ok)' }} />
+          <span style={{ fontWeight: 700, color: '#1e293b' }}>
+            30 Karyawan Aktif
+          </span>
+          <span className="chip" style={{ fontSize: 10 }}>
+            {workingCount} sibuk
+          </span>
+        </div>
       </div>
 
-      {/* Interactive Activity Shortcuts (Bottom Left of Canvas) */}
+      {/* Leisure Quick Actions (Bottom Bar) */}
       <div
         style={{
           position: 'absolute',
-          bottom: 12,
-          left: 12,
+          bottom: 10,
+          left: 10,
           zIndex: 10,
-          background: 'var(--panel)',
-          border: '1px solid var(--line)',
+          background: 'rgba(255, 255, 255, 0.92)',
+          backdropFilter: 'blur(8px)',
           borderRadius: 10,
           padding: '6px 10px',
-          fontSize: 11,
-          backdropFilter: 'blur(8px)',
+          border: '1px solid #d5cabb',
           display: 'flex',
-          alignItems: 'center',
           gap: 6,
+          alignItems: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
         }}
       >
-        <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>Aksi Cepat:</span>
+        <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>Aktivitas Santai:</span>
         <button
-          onClick={() => triggerCoffeeBreak('zaki')}
+          onClick={() => triggerActivity('playing_billiard', 'Main billiard 🎱')}
           className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff' }}
-          title="Zaki pergi ngopi"
+          style={{ cursor: 'pointer', background: '#ffffff', color: '#15803d', fontWeight: 600 }}
+          title="Kirim agent main billiard"
         >
-          ☕ Zaki Ngopi
+          🎱 Main Billiard
         </button>
         <button
-          onClick={() => triggerPS5('lulu')}
+          onClick={() => triggerActivity('playing_guitar', 'Jaming gitar 🎸')}
           className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff' }}
-          title="Lulu santai main PS5"
+          style={{ cursor: 'pointer', background: '#ffffff', color: '#d9772f', fontWeight: 600 }}
+          title="Kirim agent main gitar"
         >
-          🎮 Lulu PS5
+          🎸 Jaming Gitar
         </button>
         <button
-          onClick={() => {
-            agentList.forEach((id) => triggerBackToDesk(id));
-          }}
+          onClick={() => triggerActivity('playing_piano', 'Main piano 🎹')}
           className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff', color: 'var(--ok)' }}
-          title="Semua agen kembali kerja ke meja"
+          style={{ cursor: 'pointer', background: '#ffffff', color: '#0f172a', fontWeight: 600 }}
+          title="Kirim agent main piano"
         >
-          💻 Semua Kerja
+          🎹 Main Piano
+        </button>
+        <button
+          onClick={() => triggerActivity('playing_drums', 'Gebuk drum 🥁')}
+          className="chip"
+          style={{ cursor: 'pointer', background: '#ffffff', color: '#b91c1c', fontWeight: 600 }}
+          title="Kirim agent main drum"
+        >
+          🥁 Main Drum
+        </button>
+        <button
+          onClick={() => triggerActivity('gaming_ps5', 'Main FIFA 🎮')}
+          className="chip"
+          style={{ cursor: 'pointer', background: '#ffffff', color: '#2563eb', fontWeight: 600 }}
+          title="Kirim agent main PS5"
+        >
+          🎮 Main PS5
+        </button>
+        <button
+          onClick={() => triggerActivity('coffee_break', 'Ngopi dulu ☕')}
+          className="chip"
+          style={{ cursor: 'pointer', background: '#ffffff', color: '#78350f', fontWeight: 600 }}
+          title="Kirim agent ngopi"
+        >
+          ☕ Ngopi
         </button>
       </div>
 
-      <Canvas camera={{ position: [0, 11, 13], fov: 48 }} shadows>
-        <ambientLight intensity={0.95} color="#fff8f0" />
+      <Canvas camera={{ position: [0, 32, 28], fov: 50 }} shadows>
+        <ambientLight intensity={1.1} color="#fffcf5" />
         <directionalLight
-          position={[8, 14, 8]}
-          intensity={1.3}
-          color="#fff6e8"
+          position={[15, 30, 20]}
+          intensity={1.5}
+          color="#fff8eb"
           castShadow
           shadow-mapSize={[2048, 2048]}
         />
-        <pointLight position={[-6, 4, 4]} intensity={0.6} color="#fde68a" />
-        <pointLight position={[6, 3, -5]} intensity={0.4} color="#fef08a" />
+        <pointLight position={[-14, 6, 16]} intensity={0.8} color="#fef08a" distance={15} />
+        <pointLight position={[8, 6, 16]} intensity={0.8} color="#fde68a" distance={15} />
+        <pointLight position={[17, 6, 15]} intensity={0.7} color="#60a5fa" distance={15} />
 
         <SimulationLoop behaviorsRef={behaviorsRef} setBehaviorsState={setBehaviors} />
-        <CinematicCamera active={cinematic} />
 
         <OfficeEnvironment />
 
-        {agentList.map((id) => {
-          const b = behaviors[id];
+        {/* Render all 30 Agents */}
+        {AGENT_REGISTRY_30.map((agent) => {
+          const b = behaviors[agent.role];
           if (!b) return null;
           return (
             <AgentCharacter
-              key={id}
-              id={id}
-              name={AGENT_NAMES[id]}
+              key={agent.role}
+              role={agent.role}
+              name={agent.name}
+              title={agent.title}
+              department={agent.dept}
               state={b.state}
               currentPos={b.currentPos}
               facingTarget={b.facingTarget}
@@ -265,31 +349,13 @@ export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
           );
         })}
 
-        {/* Clickable desk triggers to inspect agent */}
-        {agentList.map((id) => {
-          const home = getHomeDesk(id);
-          return (
-            <mesh
-              key={`clickable-desk-${id}`}
-              position={[home[0], 0.3, home[2] - 0.5]}
-              onClick={() => onSelectAgent?.(AGENT_ROLES[id])}
-              visible={false}
-            >
-              <boxGeometry args={[1.5, 0.8, 1.2]} />
-              <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-          );
-        })}
-
-        {!cinematic && (
-          <OrbitControls
-            ref={controlsRef}
-            maxPolarAngle={Math.PI / 2 - 0.05}
-            minDistance={4}
-            maxDistance={24}
-            target={[0, 0.5, 0]}
-          />
-        )}
+        <OrbitControls
+          ref={controlsRef}
+          maxPolarAngle={Math.PI / 2 - 0.05}
+          minDistance={6}
+          maxDistance={65}
+          target={[0, 0, 0]}
+        />
       </Canvas>
     </div>
   );

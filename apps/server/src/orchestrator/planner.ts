@@ -1,6 +1,7 @@
 import { modelRouter } from '../models/router.js';
 import type { DAGTask, ExecutionPlan } from './types.js';
 import type { AgentRole } from '@virtual-office/shared';
+import { hierarchicalPlanner } from './hierarchicalPlanner.js';
 
 const VALID_ROLES = [
   'orchestrator', 'business-strategist', 'product-manager', 'business-analyst',
@@ -66,22 +67,22 @@ JSON Output Schema:
       "inputArtifacts": [],
       "expectedArtifacts": ["docs/prd.md"],
       "estimatedComplexity": "medium"
-    },
-    {
-      "id": "TASK-2",
-      "title": "Brief title",
-      "description": "Detailed instructions",
-      "agentRole": "backend-engineer",
-      "dependencies": ["TASK-1"],
-      "inputArtifacts": ["docs/prd.md"],
-      "expectedArtifacts": ["src/api/index.ts"],
-      "estimatedComplexity": "high"
     }
   ]
 }`;
 
 export class GoalPlanner {
   async plan(projectId: string, goal: string): Promise<ExecutionPlan> {
+    try {
+      // Primary: Use Hierarchical Multi-Agent Sub-Orchestrators
+      const hierarchicalPlan = await hierarchicalPlanner.plan(projectId, goal);
+      if (hierarchicalPlan.tasks && hierarchicalPlan.tasks.length > 0) {
+        return hierarchicalPlan;
+      }
+    } catch (err) {
+      console.warn('[GoalPlanner] Hierarchical planning failed, falling back to direct prompt:', err);
+    }
+
     const prompt = `Goal: "${goal}"\nGenerate an execution plan for this goal. Output pure JSON matching the schema.`;
 
     try {

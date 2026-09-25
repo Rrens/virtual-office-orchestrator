@@ -8,6 +8,8 @@ export interface LogEntry {
   level: LogLevel;
   module: string;
   message: string;
+  model?: string;
+  agentRole?: string;
   data?: any;
 }
 
@@ -24,13 +26,15 @@ function getLogFilePath(date?: Date): string {
   return path.join(LOGS_DIR, `${dateStr}.log`);
 }
 
-export function writeLog(level: LogLevel, module: string, message: string, data?: any): void {
+export function writeLog(level: LogLevel, module: string, message: string, data?: any, model?: string, agentRole?: string): void {
   const now = new Date();
   const entry: LogEntry = {
     timestamp: now.toISOString(),
     level,
     module,
     message,
+    ...(model ? { model } : {}),
+    ...(agentRole ? { agentRole } : {}),
     ...(data !== undefined ? { data } : {}),
   };
 
@@ -41,17 +45,17 @@ export function writeLog(level: LogLevel, module: string, message: string, data?
     if (err) console.error('[Logger] Failed to write log:', err);
   });
 
-  // Also print nicely to stdout in dev
   const timeShort = now.toLocaleTimeString();
   const color =
     level === 'error' ? '\x1b[31m' :
     level === 'warn' ? '\x1b[33m' :
     level === 'debug' ? '\x1b[90m' : '\x1b[36m';
-  console.log(`${color}[${timeShort}][${level.toUpperCase()}][${module}]\x1b[0m ${message}`);
+  const modelTag = model ? ` \x1b[35m[${model}]\x1b[0m` : '';
+  console.log(`${color}[${timeShort}][${level.toUpperCase()}][${module}]${modelTag}\x1b[0m ${message}`);
 }
 
 export const logger = {
-  info: (module: string, message: string, data?: any) => writeLog('info', module, message, data),
+  info: (module: string, message: string, data?: any, model?: string, agentRole?: string) => writeLog('info', module, message, data, model, agentRole),
   warn: (module: string, message: string, data?: any) => writeLog('warn', module, message, data),
   error: (module: string, message: string, data?: any) => writeLog('error', module, message, data),
   debug: (module: string, message: string, data?: any) => writeLog('debug', module, message, data),

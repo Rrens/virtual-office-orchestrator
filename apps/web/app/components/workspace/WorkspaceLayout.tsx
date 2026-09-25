@@ -30,6 +30,7 @@ interface Project {
   status: string;
   usedTokens: number;
   autonomyLevel: number;
+  workflowExecutions?: Array<{ startedAt?: string | null }>;
 }
 
 interface Props {
@@ -45,6 +46,7 @@ interface Props {
   onCancel?: () => void;
   starting?: boolean;
   onSelectAgent?: (agentId: string) => void;
+  onOpenGraphify?: () => void;
 }
 
 export function WorkspaceLayout({
@@ -60,6 +62,7 @@ export function WorkspaceLayout({
   onCancel,
   starting,
   onSelectAgent,
+  onOpenGraphify,
 }: Props) {
   const completedTasks = tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'APPROVED').length;
   const activeTasks = tasks.filter((t) => ['QUEUED', 'ASSIGNED', 'RUNNING', 'REVIEW'].includes(t.status)).length;
@@ -110,6 +113,7 @@ export function WorkspaceLayout({
         blockedTasks={blockedTasks}
         usedTokens={project?.usedTokens ?? 0}
         connected={connected}
+        workflowStartedAt={project?.workflowExecutions?.[0]?.startedAt ?? null}
         onStart={onStart}
         onPause={onPause}
         onResume={onResume}
@@ -149,6 +153,7 @@ export function WorkspaceLayout({
           approvals={approvals}
           artifacts={artifacts}
           events={events}
+          onOpenGraphify={onOpenGraphify}
         />
       </div>
 

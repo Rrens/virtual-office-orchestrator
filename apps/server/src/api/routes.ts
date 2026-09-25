@@ -15,6 +15,8 @@ import type { AgentRole, TaskStatus, MemoryScope } from '@virtual-office/shared'
 
 import { readLogs, listLogDates, type LogLevel } from '../utils/logger.js';
 import { exportProject } from '../utils/exporter.js';
+import { graphifyService } from '../graphify/service.js';
+import { DEPARTMENT_LEADS } from '../orchestrator/hierarchicalPlanner.js';
 
 export async function registerRoutes(app: FastifyInstance) {
   // Organizations & Projects
@@ -442,5 +444,103 @@ export async function registerRoutes(app: FastifyInstance) {
     } catch (err) {
       return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // Graphify Knowledge Graph
+  app.get('/api/projects/:id/graph', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      const summary = await graphifyService.buildProjectGraph(id);
+      return { success: true, ...summary };
+    } catch (err) {
+      return reply.status(404).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get('/api/projects/:id/graph/search', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { q = '' } = req.query as { q?: string };
+    try {
+      const result = await graphifyService.querySubgraph(id, q);
+      return { success: true, ...result };
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Hierarchical Orchestrator Tree
+  app.get('/api/projects/:id/hierarchy', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        workflowExecutions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: {
+            tasks: {
+              include: {
+                assignedAgent: { include: { definition: true } },
+                dependencies: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!project) return reply.status(404).send({ error: 'Project not found' });
+
+    const execution = project.workflowExecutions[0];
+    let milestones: any[] = [];
+    if (execution?.dagJson) {
+      try {
+        const parsed = JSON.parse(execution.dagJson);
+        milestones = parsed.milestones || [];
+      } catch {}
+    }
+
+    const tasks = execution?.tasks || [];
+    const departmentsSet = new Set<string>();
+
+    tasks.forEach((t) => {
+      const dept = Object.entries(DEPARTMENT_LEADS).find(([_, cfg]) =>
+        cfg.members.includes(t.agentRole as AgentRole)
+      )?.[0] || 'engineering';
+      departmentsSet.add(dept);
+    });
+
+    const departmentTrees = Array.from(departmentsSet).map((dept) => {
+      const leadCfg = DEPARTMENT_LEADS[dept] || DEPARTMENT_LEADS.engineering;
+      const milestone = milestones.find((m) => m.department === dept);
+      const deptTasks = tasks.filter((t) => {
+        return leadCfg.members.includes(t.agentRole as AgentRole);
+      });
+      const completedTasks = deptTasks.filter((t) => t.status === 'COMPLETED' || t.status === 'APPROVED').length;
+
+      return {
+        department: dept,
+        subOrchestrator: {
+          role: leadCfg.leadRole,
+          name: leadCfg.leadName,
+          title: leadCfg.subOrchestratorTitle,
+        },
+        directive: milestone?.directive || `Deliverables for ${dept}`,
+        totalTasks: deptTasks.length,
+        completedTasks,
+        tasks: deptTasks,
+      };
+    });
+
+    return {
+      chiefOrchestrator: {
+        role: 'orchestrator',
+        name: 'Budi',
+        title: 'Chief Orchestrator (CEO)',
+      },
+      projectGoal: project.goal,
+      departments: departmentTrees,
+      totalTasks: tasks.length,
+    };
   });
 }

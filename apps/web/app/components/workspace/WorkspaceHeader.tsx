@@ -12,6 +12,7 @@ interface Props {
   blockedTasks: number;
   usedTokens: number;
   connected: boolean;
+  workflowStartedAt?: string | null;
   onStart?: () => void;
   onPause?: () => void;
   onResume?: () => void;
@@ -19,9 +20,18 @@ interface Props {
   starting?: boolean;
 }
 
-function LiveTimer({ running }: { running: boolean }) {
-  const [seconds, setSeconds] = useState(0);
+function LiveTimer({ running, startedAt }: { running: boolean; startedAt?: string | null }) {
+  const [seconds, setSeconds] = useState(() => {
+    if (!startedAt) return 0;
+    return Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+  });
   const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (startedAt && seconds === 0) {
+      setSeconds(Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)));
+    }
+  }, [startedAt]);
 
   useEffect(() => {
     if (running) {
@@ -60,7 +70,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function WorkspaceHeader({
   projectName, projectStatus, progressPercent,
   totalTasks, completedTasks, activeTasks, blockedTasks,
-  usedTokens, connected,
+  usedTokens, connected, workflowStartedAt,
   onStart, onPause, onResume, onCancel, starting,
 }: Props) {
   return (
@@ -100,7 +110,7 @@ export function WorkspaceHeader({
           <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>
             {completedTasks}/{totalTasks} tugas
           </span>
-          <LiveTimer running={projectStatus === 'running'} />
+          <LiveTimer running={projectStatus === 'running'} startedAt={workflowStartedAt} />
         </div>
         <div style={{ height: 5, background: 'var(--line)', borderRadius: 99, overflow: 'hidden' }}>
           <div style={{

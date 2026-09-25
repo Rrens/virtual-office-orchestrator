@@ -147,13 +147,27 @@ async function handleTaskQueued(event: any): Promise<void> {
 async function executeTask(task: any, agent: any): Promise<void> {
   const selectedTier = modelRouter.selectTier(task.agentRole, 'medium');
 
-  logger.info('ModelRouter', `Executing task "${task.title}" with role ${task.agentRole} using tier ${selectedTier}`);
+  // Determine human-readable model name for logs
+  const modelName =
+    selectedTier === 'tier1_ollama'
+      ? (task.agentRole?.includes('engineer') ? 'qwen2.5-coder:3b' : 'qwen3.5:4b')
+      : selectedTier === 'tier2_9router'
+      ? 'qwen-2.5-coder-32b (9Router)'
+      : 'gpt-4o-mini (Cloud)';
+
+  logger.info(
+    'ModelRouter',
+    `${agent.definition.name} (${task.agentRole}) mulai eksekusi "${task.title}"`,
+    { taskId: task.id, agentId: agent.id, tier: selectedTier },
+    modelName,
+    task.agentRole
+  );
 
   const agentRun = await prisma.agentRun.create({
     data: {
       taskId: task.id,
       agentInstanceId: agent.id,
-      modelUsed: selectedTier,
+      modelUsed: `${selectedTier}:${modelName}`,
       status: 'running',
     },
   });

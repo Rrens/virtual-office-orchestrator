@@ -3,13 +3,15 @@
 import { useState } from 'react';
 import type { WSEvent } from '../../../hooks/useProjectWebSocket';
 
-type Tab = 'roadmap' | 'keputusan' | 'output' | 'bukti-qa';
+type Tab = 'roadmap' | 'keputusan' | 'output' | 'bukti-qa' | 'graphify';
 
 interface Task {
   id: string;
   title: string;
   status: string;
   agentRole?: string;
+  department?: string;
+  subOrchestratorName?: string;
 }
 
 interface Props {
@@ -18,6 +20,7 @@ interface Props {
   approvals: { id: string; title: string; status: string; description?: string }[];
   artifacts: { id: string; title: string; taskId?: string }[];
   events: WSEvent[];
+  onOpenGraphify?: () => void;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -33,7 +36,7 @@ const STATUS_LABELS: Record<string, string> = {
   'BLOCKED': 'Terhambat', 'FAILED': 'Gagal',
 };
 
-export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events }: Props) {
+export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOpenGraphify }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('roadmap');
 
   const completedCount = tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'APPROVED').length;
@@ -76,17 +79,18 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events }: Pr
       }}>
         {([
           { key: 'roadmap', label: 'Roadmap' },
+          { key: 'graphify', label: 'Graphify' },
           { key: 'keputusan', label: 'Keputusan' },
           { key: 'output', label: 'Output' },
-          { key: 'bukti-qa', label: 'Bukti QA' },
+          { key: 'bukti-qa', label: 'QA' },
         ] as { key: Tab; label: string }[]).map((t) => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             style={{
               flex: 1,
-              padding: '8px 4px',
-              fontSize: 10.5,
+              padding: '8px 2px',
+              fontSize: 10,
               fontWeight: 700,
               border: 'none',
               background: activeTab === t.key ? '#ffffff' : 'transparent',
@@ -146,6 +150,38 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events }: Pr
                 );
               })
             )}
+          </div>
+        )}
+
+        {activeTab === 'graphify' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', padding: '16px 6px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #3b82f6)', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+                📊
+              </div>
+              <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                Graphify Knowledge Graph
+              </h4>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--muted)', lineHeight: 1.35 }}>
+                Visualisasi hubungan antar agent, artifact, API, database, dan komponen UI dalam proyek ini.
+              </p>
+            </div>
+            <button
+              onClick={onOpenGraphify}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: 'none',
+                background: 'var(--pingot)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              Buka Graphify Explorer
+            </button>
           </div>
         )}
 
@@ -212,35 +248,77 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events }: Pr
 
         {activeTab === 'bukti-qa' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {events.filter((e) => e.type?.includes('qa.') || e.agentRole === 'qa-engineer').length === 0 ? (
-              <p style={{ fontSize: 12, color: 'var(--faint)', textAlign: 'center', padding: 24 }}>
-                Belum ada bukti QA.
-              </p>
-            ) : (
-              events
-                .filter((e) => e.type?.includes('qa.') || e.agentRole === 'qa-engineer')
-                .map((e, i) => (
+            {(() => {
+              const qaEvents = events.filter((e) => {
+                const t = String(e.type ?? '').toLowerCase();
+                const role = String(e.agentRole ?? '').toLowerCase();
+                const msg = String(e.message ?? '').toLowerCase();
+                return (
+                  t.includes('qa') ||
+                  t.includes('review') ||
+                  t.includes('approval') ||
+                  t.includes('handoff') ||
+                  role === 'qa-engineer' ||
+                  role === 'security-engineer' ||
+                  msg.includes('review') ||
+                  msg.includes('qa') ||
+                  msg.includes('disetujui')
+                );
+              });
+
+              if (qaEvents.length === 0) {
+                return (
+                  <div style={{ padding: '24px 12px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, color: 'var(--muted)', margin: '0 0 8px', fontWeight: 600 }}>
+                      Belum ada bukti QA
+                    </p>
+                    <p style={{ fontSize: 11, color: 'var(--faint)', margin: 0, lineHeight: 1.4 }}>
+                      Setiap task yang selesai dikerjakan developer akan otomatis diuji oleh Risko (QA Lead) dan dicatat di sini.
+                    </p>
+                  </div>
+                );
+              }
+
+              return qaEvents.map((e, i) => {
+                const eType = String(e.type ?? '');
+                const eMsg = String(e.message ?? '');
+                const isApproved = eType.includes('approved') || eMsg.includes('disetujui');
+                const isRejected = eType.includes('failed') || eType.includes('rejected');
+                const badgeColor = isApproved ? 'var(--ok)' : isRejected ? 'var(--bad)' : 'var(--warn)';
+
+                return (
                   <div
                     key={i}
                     style={{
                       padding: '8px 10px',
                       borderRadius: 10,
-                      border: '1px solid var(--line)',
-                      background: '#ffffff',
+                      border: `1px solid ${isApproved ? 'var(--ok)' : 'var(--line)'}`,
+                      background: isApproved ? '#f7fdf9' : '#ffffff',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                      <div style={{ width: 18, height: 18, borderRadius: '50%', background: ROLE_COLORS['qa-engineer'], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800 }}>
-                        R
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--risko)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 800 }}>
+                          R
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>Risko · QA Lead</span>
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>Risko</span>
+                      <span className="chip" style={{ fontSize: 9, color: badgeColor, borderColor: badgeColor }}>
+                        {eType.replace('approval.', '').replace('task.', '')}
+                      </span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--feed-text)', lineHeight: 1.35 }}>
-                      {String(e.message ?? e.type ?? '')}
+                      {eMsg || eType}
                     </div>
+                    {e.taskId != null && (
+                      <div style={{ fontSize: 9, color: 'var(--faint)', marginTop: 3, fontFamily: 'monospace' }}>
+                        task #{String(e.taskId).slice(0, 8)}
+                      </div>
+                    )}
                   </div>
-                ))
-            )}
+                );
+              });
+            })()}
           </div>
         )}
       </div>

@@ -7,6 +7,7 @@ import { AgentInspectorModal } from './components/AgentInspectorModal';
 import { ArtifactViewerModal } from './components/ArtifactViewerModal';
 import { CustomerFeedbackModal } from './components/CustomerFeedbackModal';
 import { LogViewerModal } from './components/workspace/LogViewerModal';
+import { GraphifyModal } from './components/GraphifyModal';
 import { useProjectWebSocket } from '../hooks/useProjectWebSocket';
 import { apiFetch } from '../lib/api';
 
@@ -17,7 +18,7 @@ interface Project {
   status: string;
   autonomyLevel: number;
   usedTokens: number;
-  workflowExecutions: Array<{ id: string; status: string; tasks: Task[] }>;
+  workflowExecutions: Array<{ id: string; status: string; startedAt?: string | null; tasks: Task[] }>;
 }
 
 interface Task {
@@ -52,6 +53,7 @@ export default function HomePage() {
   const [inspectedAgentId, setInspectedAgentId] = useState<string | null>(null);
   const [artifactView, setArtifactView] = useState<{ taskId: string; taskTitle: string } | null>(null);
   const [showLogViewer, setShowLogViewer] = useState(false);
+  const [showGraphify, setShowGraphify] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   async function handleExport() {
@@ -206,6 +208,21 @@ export default function HomePage() {
         </button>
         {selectedProjectId && (
           <button
+            onClick={() => setShowGraphify(true)}
+            style={{
+              padding: '5px 12px', borderRadius: 99,
+              border: '1px solid #c7d2fe',
+              background: '#eff6ff',
+              color: '#3b82f6', fontSize: 11,
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            📊 Graphify
+          </button>
+        )}
+        {selectedProjectId && (
+          <button
             onClick={handleExport}
             disabled={exporting}
             style={{
@@ -311,6 +328,7 @@ export default function HomePage() {
         onCancel={handleCancel}
         starting={starting}
         onSelectAgent={setInspectedAgentId}
+        onOpenGraphify={() => setShowGraphify(true)}
       >
         <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13 }}>
           Pilih atau buat proyek untuk memulai.
@@ -326,6 +344,13 @@ export default function HomePage() {
       />
 
       <LogViewerModal isOpen={showLogViewer} onClose={() => setShowLogViewer(false)} />
+
+      {showGraphify && selectedProjectId && (
+        <GraphifyModal
+          projectId={selectedProjectId}
+          onClose={() => setShowGraphify(false)}
+        />
+      )}
 
       {showFeedbackModal && selectedProjectId && (
         <CustomerFeedbackModal
