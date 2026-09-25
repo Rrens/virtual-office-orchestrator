@@ -6,7 +6,7 @@ AI company operating system — user memberikan business goal, sistem otomatis m
 
 | Layer | Tech |
 |---|---|
-| Backend | Node.js 22 + Fastify + TypeScript |
+| Backend | Node.js 24 + Fastify + TypeScript |
 | Database | PostgreSQL 16 + Prisma ORM |
 | Event Broker | Apache Kafka |
 | AI Model Tier 1 | Ollama (Proxmox `192.168.0.2:11434`) |
@@ -32,7 +32,7 @@ virtual-office/
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 24+
 - Docker + Docker Compose
 - Ollama running (local atau remote)
 - PostgreSQL 16
@@ -48,10 +48,26 @@ git checkout dev
 npm install
 ```
 
-### 2. Setup environment variables
+> **Shortcut:** `make install`
+
+### 2. Automated full setup (recommended)
 
 ```bash
-cp apps/server/.env.example apps/server/.env
+make setup
+```
+
+This single command will:
+1. Copy `.env.example` → `.env`
+2. Start Docker infrastructure (Postgres + Kafka + Zookeeper + Kafka UI)
+3. Run Prisma migrations
+4. Seed 30 agent definitions
+
+### 3. Manual setup (if you prefer step-by-step)
+
+#### Setup environment variables
+
+```bash
+make env
 ```
 
 Edit `apps/server/.env`:
@@ -64,43 +80,82 @@ OLLAMA_MODEL_PLANNER=qwen2.5:0.5b
 KAFKA_BROKER=localhost:9092
 ```
 
-### 3. Start Kafka + Zookeeper
+#### Start Kafka + Zookeeper + Postgres
 
 ```bash
-docker-compose up -d zookeeper kafka kafka-ui
+make up
 ```
 
 Kafka UI tersedia di http://localhost:8080
 
-### 4. Setup database
+#### Setup database
 
 ```bash
-# Run Prisma migration
-npm run db:migrate --workspace=@virtual-office/server
-
-# Seed 30 agent definitions
-node --import tsx apps/server/src/db/seed.ts
+make db-migrate
+make db-seed
 ```
 
-### 5. Run development servers
+### 4. Run development servers
+
+Run both backend & frontend in one terminal:
+```bash
+make dev
+```
+
+Or run separately:
 
 Terminal 1 — Backend:
 ```bash
-npm run dev --workspace=@virtual-office/server
+make dev-server
 # Running on http://localhost:4000
 # Docs: http://localhost:4000/docs
 ```
 
 Terminal 2 — Frontend:
 ```bash
-npm run dev --workspace=@virtual-office/web
+make dev-web
 # Running on http://localhost:3000
 ```
+
+## Makefile Commands
+
+```bash
+make help          # Show all available commands
+```
+
+| Command | Description |
+|---|---|
+| `make setup` | Full initial setup (env + docker + db migrate + seed) |
+| `make install` | Install npm dependencies |
+| `make env` | Copy `.env.example` → `.env` |
+| `make up` | Start Docker infrastructure |
+| `make down` | Stop Docker infrastructure |
+| `make restart` | Restart Docker containers |
+| `make ps` | Show container status |
+| `make db-migrate` | Run Prisma migrations |
+| `make db-seed` | Seed 30 agent definitions |
+| `make db-reset` | Reset database |
+| `make db-studio` | Open Prisma Studio GUI |
+| `make dev` | Run both backend & frontend |
+| `make dev-server` | Run backend only (port 4000) |
+| `make dev-web` | Run frontend only (port 3000) |
+| `make test` | Run Vitest unit tests |
+| `make build` | Build all workspaces |
+| `make typecheck` | Run TypeScript type check |
+| `make lint` | Run linting |
+| `make clean` | Clean build artifacts |
+| `make docker-build` | Build production Docker images |
+| `make docker-up` | Start production stack |
 
 ## Production Deployment (Docker Compose)
 
 ```bash
-# Build & start all services
+make docker-build
+make docker-up
+```
+
+Or manually:
+```bash
 docker-compose -f docker-compose.prod.yml up -d --build
 
 # Run database migration inside container

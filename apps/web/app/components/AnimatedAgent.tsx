@@ -3,7 +3,7 @@
 import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { ReadyPlayerMeAvatar } from './ReadyPlayerMeAvatar';
+import { ProceduralAvatar } from './ProceduralAvatar';
 
 interface AnimatedAgentProps {
   role: string;
@@ -85,14 +85,13 @@ export function AnimatedAgent({
           )}
         </group>
       ) : (
-        // LOD0: full ReadyPlayerMe avatar
-        <ReadyPlayerMeAvatar
+        // LOD0: procedural stylized 3D avatar (offline, zero network deps)
+        <ProceduralAvatar
           role={role}
           name={name}
           status={status}
           color={color}
           position={[0, 0, 0]}
-          url={url}
         />
       )}
     </group>

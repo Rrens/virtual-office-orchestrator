@@ -36,6 +36,16 @@ await app.register(swaggerUi, {
   routePrefix: '/docs',
 });
 
+// Error handler to log internal server errors with details
+app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
+  request.log.error(error);
+  const statusCode = error.statusCode ?? 500;
+  reply.status(statusCode).send({
+    error: error.message || 'Internal Server Error',
+    statusCode,
+  });
+});
+
 // Health check
 app.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };

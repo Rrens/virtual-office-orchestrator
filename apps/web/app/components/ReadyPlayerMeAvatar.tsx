@@ -1,9 +1,8 @@
 'use client';
 
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useRef, Component, type ReactNode } from 'react';
 import { useGLTF, Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useRef } from 'react';
 import * as THREE from 'three';
 import { ROLE_AVATAR_MAP, STATUS_EMOJI } from '../lib/avatars';
 
@@ -16,7 +15,32 @@ interface AvatarProps {
   position: [number, number, number];
 }
 
-function RPMModel({ url, position, status }: { url: string; position: [number, number, number]; status: string }) {
+// Error boundary to catch GLB fetch failures
+class GLBErrorBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
+function RPMModel({
+  url,
+  position,
+  status,
+}: {
+  url: string;
+  position: [number, number, number];
+  status: string;
+}) {
   const { scene } = useGLTF(url);
   const meshRef = useRef<THREE.Group>(null);
 
@@ -27,7 +51,6 @@ function RPMModel({ url, position, status }: { url: string; position: [number, n
     return clone;
   }, [scene, position]);
 
-  // PRD §23: Sync facial/material expression with agent status
   useFrame(() => {
     if (!meshRef.current) return;
     meshRef.current.traverse((child) => {
@@ -54,12 +77,35 @@ function RPMModel({ url, position, status }: { url: string; position: [number, n
   );
 }
 
-function FallbackMesh({ position, color }: { position: [number, number, number]; color: string }) {
+function CapsuleAvatar({
+  position,
+  color,
+  status,
+}: {
+  position: [number, number, number];
+  color: string;
+  status: string;
+}) {
+  const isActive = status === 'working' || status === 'thinking';
   return (
-    <mesh position={[position[0], position[1] + 0.3, position[2]]}>
-      <capsuleGeometry args={[0.2, 0.5, 8, 16]} />
-      <meshStandardMaterial color={color} />
-    </mesh>
+    <group>
+      <mesh position={[position[0], position[1] + 0.5, position[2]]}>
+        <capsuleGeometry args={[0.18, 0.7, 4, 8]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <mesh position={[position[0], position[1] + 1.2, position[2]]}>
+        <sphereGeometry args={[0.2, 10, 10]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      {isActive && (
+        <pointLight
+          color={color}
+          intensity={0.8}
+          distance={2}
+          position={[position[0], position[1] + 0.8, position[2]]}
+        />
+      )}
+    </group>
   );
 }
 
@@ -68,34 +114,40 @@ export function ReadyPlayerMeAvatar({ url, role, name, status, color, position }
   const avatarUrl = url ?? roleConfig?.modelUrl;
   const statusLabel = STATUS_EMOJI[status] ?? status;
 
-  const bubbleBg = {
+  const bubbleBg: Record<string, string> = {
     thinking: 'bg-yellow-500',
-    working: 'bg-indigo-500 animate-pulse',
+    working: 'bg-indigo-500',
     reviewing: 'bg-amber-500',
-    error: 'bg-red-500 animate-pulse',
-    escalated: 'bg-rose-600 animate-pulse',
+    error: 'bg-red-500',
+    escalated: 'bg-rose-600',
     completed: 'bg-emerald-500',
     assigned: 'bg-blue-500',
-  }[status] ?? 'bg-slate-700';
+  };
+
+  const bgClass = bubbleBg[status] ?? 'bg-slate-700';
+  const pulse = ['working', 'thinking', 'error', 'escalated'].includes(status) ? 'animate-pulse' : '';
+  const fallback = <CapsuleAvatar position={position} color={color} status={status} />;
 
   return (
     <group>
       {avatarUrl ? (
-        <Suspense fallback={<FallbackMesh position={position} color={color} />}>
-          <RPMModel url={avatarUrl} position={position} status={status} />
-        </Suspense>
+        <GLBErrorBoundary fallback={fallback}>
+          <Suspense fallback={fallback}>
+            <RPMModel url={avatarUrl} position={position} status={status} />
+          </Suspense>
+        </GLBErrorBoundary>
       ) : (
-        <FallbackMesh position={position} color={color} />
+        fallback
       )}
 
-      {/* PRD §24: Floating status bubble above agent */}
-      <Html position={[position[0], position[1] + 1.3, position[2]]} center distanceFactor={12}>
+      {/* PRD §24: Floating status bubble */}
+      <Html position={[position[0], position[1] + 1.6, position[2]]} center distanceFactor={12}>
         <div className="flex flex-col items-center pointer-events-none">
           <div className="px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700 text-[10px] font-semibold text-white whitespace-nowrap shadow-lg">
             {name}
           </div>
           {status !== 'idle' && (
-            <span className={`mt-0.5 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold text-white whitespace-nowrap ${bubbleBg}`}>
+            <span className={`mt-0.5 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold text-white whitespace-nowrap ${bgClass} ${pulse}`}>
               {statusLabel}
             </span>
           )}

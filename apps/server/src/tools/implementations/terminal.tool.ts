@@ -6,7 +6,7 @@ import type { ToolDefinition, ToolExecutionContext, ToolInput, ToolOutput } from
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
-const DOCKER_IMAGE = 'node:22-alpine';
+const DOCKER_IMAGE = 'node:24-alpine';
 const TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_BYTES = 512 * 1024;
 
