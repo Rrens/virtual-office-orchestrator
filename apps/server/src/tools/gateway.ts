@@ -64,7 +64,7 @@ export class ToolGateway {
     const toolCallRecord = await prisma.toolCall.create({
       data: {
         id: toolCallId,
-        agentRunId: context.taskId,
+        agentRunId: context.agentRunId,
         toolName,
         inputJson: JSON.stringify(input),
         status: 'running',

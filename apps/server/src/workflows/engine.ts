@@ -151,6 +151,183 @@ export class WorkflowEngine {
     return readyTaskIds;
   }
 
+  async checkWorkflowCompletion(workflowExecutionId: string): Promise<void> {
+    const remaining = await prisma.task.count({
+      where: {
+        workflowExecutionId,
+        status: { notIn: ['COMPLETED', 'APPROVED', 'CANCELLED', 'FAILED'] },
+      },
+    });
+
+    if (remaining === 0) {
+      const execution = await prisma.workflowExecution.findUnique({
+        where: { id: workflowExecutionId },
+        include: {
+          tasks: { include: { artifacts: true } },
+          project: true,
+        },
+      });
+
+      if (!execution) return;
+
+      const completedAt = new Date();
+      const durationMs = execution.startedAt
+        ? completedAt.getTime() - new Date(execution.startedAt).getTime()
+        : 0;
+
+      await prisma.workflowExecution.update({
+        where: { id: workflowExecutionId },
+        data: { status: 'completed', completedAt },
+      });
+
+      await prisma.project.update({
+        where: { id: execution.projectId },
+        data: { status: 'completed' },
+      });
+
+      await publishEvent({
+        eventId: randomUUID(),
+        timestamp: new Date().toISOString(),
+        projectId: execution.projectId,
+        workflowExecutionId,
+        type: 'workflow.completed',
+        durationMs,
+      });
+
+      // Generate final report (PRD §10)
+      await this.generateFinalReport(execution);
+    }
+  }
+
+  private async generateFinalReport(execution: any): Promise<void> {
+    const completedTasks = execution.tasks.filter((t: any) => 
+      t.status === 'COMPLETED' || t.status === 'APPROVED'
+    );
+    const failedTasks = execution.tasks.filter((t: any) => t.status === 'FAILED');
+    const artifactCount = execution.tasks.reduce((sum: number, t: any) => sum + t.artifacts.length, 0);
+
+    const reportContent = `# Workflow Execution Report
+
+**Project:** ${execution.project.name}
+**Goal:** ${execution.project.goal}
+**Started:** ${execution.startedAt?.toISOString() || 'N/A'}
+**Completed:** ${execution.completedAt?.toISOString() || 'N/A'}
+**Status:** ${execution.status}
+
+## Summary
+- **Total Tasks:** ${execution.tasks.length}
+- **Completed:** ${completedTasks.length}
+- **Failed:** ${failedTasks.length}
+- **Artifacts Generated:** ${artifactCount}
+- **Tokens Used:** ${execution.project.usedTokens.toLocaleString()}
+
+## Completed Tasks
+${completedTasks.map((t: any) => `- ${t.title} (${t.agentRole})`).join('\n')}
+
+${failedTasks.length > 0 ? `## Failed Tasks\n${failedTasks.map((t: any) => `- ${t.title} (${t.agentRole})`).join('\n')}` : ''}
+
+## Artifacts
+${execution.tasks.flatMap((t: any) => t.artifacts.map((a: any) => `- ${a.name} (${a.path})`)).join('\n') || 'No artifacts generated.'}
+`;
+
+    await prisma.artifact.create({
+      data: {
+        taskId: execution.tasks[0]?.id || execution.id,
+        agentInstanceId: execution.tasks[0]?.assignedAgentId || execution.id,
+        type: 'report',
+        name: 'Final Workflow Report',
+        path: `reports/${execution.id}/final-report.md`,
+        mimeType: 'text/markdown',
+        sizeBytes: Buffer.byteLength(reportContent),
+        content: reportContent,
+      },
+    });
+  }
+
+  async diagnoseAndHandleFailure(workflowExecutionId: string, failedTaskId: string): Promise<void> {
+    const execution = await prisma.workflowExecution.findUnique({
+      where: { id: workflowExecutionId },
+      include: { tasks: { include: { dependencies: true } } },
+    });
+    if (!execution) return;
+
+    // Pause all downstream tasks that depend on the failed task (directly or transitively)
+    const downstream = this.getDownstreamTasks(failedTaskId, execution.tasks as any);
+    if (downstream.length > 0) {
+      await prisma.task.updateMany({
+        where: { id: { in: downstream }, status: 'PENDING' },
+        data: { status: 'BLOCKED' },
+      });
+    }
+
+    // Publish diagnostic event
+    await publishEvent({
+      eventId: randomUUID(),
+      timestamp: new Date().toISOString(),
+      projectId: execution.projectId,
+      workflowExecutionId,
+      type: 'workflow.failure_diagnosed',
+      failedTaskId,
+      blockedCount: downstream.length,
+    } as any);
+  }
+
+  async resumeFromFailure(workflowExecutionId: string, failedTaskId: string): Promise<void> {
+    // Unblock downstream tasks and reset failed task to QUEUED for retry
+    const execution = await prisma.workflowExecution.findUnique({
+      where: { id: workflowExecutionId },
+      include: { tasks: { include: { dependencies: true } } },
+    });
+    if (!execution) return;
+
+    const downstream = this.getDownstreamTasks(failedTaskId, execution.tasks as any);
+
+    await prisma.task.update({
+      where: { id: failedTaskId },
+      data: { status: 'QUEUED', retryCount: 0 },
+    });
+
+    if (downstream.length > 0) {
+      await prisma.task.updateMany({
+        where: { id: { in: downstream }, status: 'BLOCKED' },
+        data: { status: 'PENDING' },
+      });
+    }
+
+    await this.resolveAndQueueTasks(workflowExecutionId);
+
+    await publishEvent({
+      eventId: randomUUID(),
+      timestamp: new Date().toISOString(),
+      projectId: execution.projectId,
+      workflowExecutionId,
+      type: 'task.started',
+      taskId: failedTaskId,
+      previousStatus: 'FAILED',
+      newStatus: 'QUEUED',
+    });
+  }
+
+  private getDownstreamTasks(
+    failedTaskId: string,
+    tasks: Array<{ id: string; dependencies: Array<{ dependsOnTaskId: string }> }>
+  ): string[] {
+    const downstream = new Set<string>();
+    const queue = [failedTaskId];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      tasks.forEach((t) => {
+        if (t.dependencies.some((d) => d.dependsOnTaskId === current) && !downstream.has(t.id)) {
+          downstream.add(t.id);
+          queue.push(t.id);
+        }
+      });
+    }
+
+    return Array.from(downstream);
+  }
+
   private validateDAG(tasks: Array<{ id: string; dependencies: string[] }>): void {
     const visited = new Set<string>();
     const recStack = new Set<string>();

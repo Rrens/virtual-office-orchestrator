@@ -31,6 +31,7 @@ export interface ToolExecutionContext {
   agentRole: string;
   projectId: string;
   taskId: string;
+  agentRunId: string;
   workspaceDir: string;
   permissions: string[];
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ReadyPlayerMeAvatar } from './ReadyPlayerMeAvatar';
 
@@ -14,6 +14,9 @@ interface AnimatedAgentProps {
   url?: string;
 }
 
+const LOD_HIGH = 10;
+const LOD_MED = 18;
+
 export function AnimatedAgent({
   role,
   name,
@@ -23,12 +26,12 @@ export function AnimatedAgent({
   url,
 }: AnimatedAgentProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const lodRef = useRef<'high' | 'med' | 'billboard'>('high');
   const currentPos = useRef(new THREE.Vector3(...targetPosition));
   const targetVec = useRef(new THREE.Vector3(...targetPosition));
+  const { camera } = useThree();
 
   useEffect(() => {
-    // When agent is reviewing, they walk to meeting room [0, 0.5, 0]
-    // Otherwise they stay at their designated desk position
     if (status === 'reviewing') {
       targetVec.current.set(0, 0.5, 0);
     } else {
@@ -39,27 +42,59 @@ export function AnimatedAgent({
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    // Smooth lerp toward target position (walking simulation)
     currentPos.current.lerp(targetVec.current, Math.min(delta * 2.5, 1));
     groupRef.current.position.copy(currentPos.current);
 
-    // Subtle bobbing animation while "walking"
     const dist = currentPos.current.distanceTo(targetVec.current);
     if (dist > 0.05) {
       groupRef.current.position.y += Math.sin(Date.now() * 0.01) * 0.03;
+    }
+
+    // LOD: compute distance from camera to agent
+    const camDist = camera.position.distanceTo(currentPos.current);
+    if (camDist < LOD_HIGH) {
+      lodRef.current = 'high';
+    } else if (camDist < LOD_MED) {
+      lodRef.current = 'med';
+    } else {
+      lodRef.current = 'billboard';
     }
   });
 
   return (
     <group ref={groupRef}>
-      <ReadyPlayerMeAvatar
-        role={role}
-        name={name}
-        status={status}
-        color={color}
-        position={[0, 0, 0]}
-        url={url}
-      />
+      {lodRef.current === 'billboard' ? (
+        // LOD2: flat billboard sphere — minimal poly
+        <mesh>
+          <sphereGeometry args={[0.25, 6, 6]} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+      ) : lodRef.current === 'med' ? (
+        // LOD1: capsule silhouette ~5k poly equivalent
+        <group>
+          <mesh position={[0, 0.5, 0]}>
+            <capsuleGeometry args={[0.18, 0.7, 4, 8]} />
+            <meshStandardMaterial color={color} />
+          </mesh>
+          <mesh position={[0, 1.2, 0]}>
+            <sphereGeometry args={[0.2, 8, 8]} />
+            <meshStandardMaterial color={color} />
+          </mesh>
+          {(status === 'working' || status === 'thinking') && (
+            <pointLight color={color} intensity={0.6} distance={1.5} />
+          )}
+        </group>
+      ) : (
+        // LOD0: full ReadyPlayerMe avatar
+        <ReadyPlayerMeAvatar
+          role={role}
+          name={name}
+          status={status}
+          color={color}
+          position={[0, 0, 0]}
+          url={url}
+        />
+      )}
     </group>
   );
 }

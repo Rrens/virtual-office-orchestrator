@@ -55,12 +55,23 @@ export interface TaskStatusChangedEvent extends BaseEvent {
   newStatus: string;
 }
 
+import type { HandoffPayload } from './types.js';
+
 export interface TaskHandoffEvent extends BaseEvent {
   type: 'task.handoff';
   taskId: string;
   fromAgentId: string;
   toAgentId: string;
-  payload: string;
+  payload: HandoffPayload;
+}
+
+// Deployment events (PRD §29)
+export interface DeploymentEvent extends BaseEvent {
+  type: 'deployment.started' | 'deployment.completed' | 'deployment.failed';
+  environment: string;
+  agentInstanceId: string;
+  manifestArtifactId?: string;
+  errorMessage?: string;
 }
 
 // Workflow events
@@ -101,6 +112,11 @@ export interface ToolEvent extends BaseEvent {
   errorMessage?: string;
 }
 
+// Project status events
+export interface ProjectStatusEvent extends BaseEvent {
+  type: 'project.paused' | 'project.resumed' | 'project.cancelled';
+}
+
 // Union of all events
 export type VirtualOfficeEvent =
   | AgentCreatedEvent
@@ -113,4 +129,6 @@ export type VirtualOfficeEvent =
   | WorkflowCompletedEvent
   | ApprovalRequestedEvent
   | ApprovalDecidedEvent
-  | ToolEvent;
+  | ToolEvent
+  | ProjectStatusEvent
+  | DeploymentEvent;

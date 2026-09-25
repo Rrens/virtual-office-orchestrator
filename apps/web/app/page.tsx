@@ -6,7 +6,14 @@ import { ActivityFeed } from './components/ActivityFeed';
 import { TaskList } from './components/TaskList';
 import { ApprovalCenter } from './components/ApprovalCenter';
 import { Office3DCanvas } from './components/Office3DCanvas';
+import { AgentInspectorModal } from './components/AgentInspectorModal';
+import { ArtifactViewerModal } from './components/ArtifactViewerModal';
+import { BudgetPanel } from './components/BudgetPanel';
+import { CustomerFeedbackModal } from './components/CustomerFeedbackModal';
+import { AgentRosterTab } from './components/AgentRosterTab';
+import { WorkflowDagVisualizer } from './components/WorkflowDagVisualizer';
 import { useProjectWebSocket } from '../hooks/useProjectWebSocket';
+import { useOfficeSounds } from '../hooks/useOfficeSounds';
 import { apiFetch } from '../lib/api';
 
 interface Project {
@@ -24,6 +31,7 @@ interface Task {
   title: string;
   description: string;
   agentRole: string;
+  assignedAgentId: string | null;
   status: string;
   outputArtifacts: string[];
 }
@@ -38,7 +46,7 @@ interface Approval {
   task?: { title: string };
 }
 
-type Tab = 'tasks' | 'approvals' | 'activity' | '3d-office';
+type Tab = 'tasks' | 'dag' | 'roster' | 'approvals' | '3d-office' | 'activity';
 
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -47,9 +55,27 @@ export default function HomePage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
   const [showNewProject, setShowNewProject] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [starting, setStarting] = useState(false);
 
+  const [inspectedAgentId, setInspectedAgentId] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [artifactView, setArtifactView] = useState<{ taskId: string; taskTitle: string } | null>(null);
+
   const { events, connected } = useProjectWebSocket(selectedProjectId);
+  const { sounds, enable, disable } = useOfficeSounds();
+
+  // Play sound FX on relevant WS events
+  useEffect(() => {
+    if (!events.length || !soundEnabled) return;
+    const latest = events[0];
+    if (latest.type === 'task.assigned') sounds.taskAssigned();
+    else if (latest.type === 'task.completed') sounds.taskCompleted();
+    else if (latest.type === 'task.failed') sounds.taskFailed();
+    else if (latest.type === 'approval.requested') sounds.approvalRequested();
+    else if (latest.type === 'workflow.started') sounds.workflowStarted();
+    else if (latest.type === 'workflow.completed') sounds.workflowCompleted();
+  }, [events, soundEnabled]);
 
   const loadProjects = useCallback(async () => {
     const data = await apiFetch<Project[]>('/api/projects');
@@ -89,8 +115,41 @@ export default function HomePage() {
     }
   }
 
+  async function handlePause() {
+    if (!selectedProjectId) return;
+    try {
+      await apiFetch(`/api/projects/${selectedProjectId}/pause`, { method: 'POST' });
+      await loadProject(selectedProjectId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to pause');
+    }
+  }
+
+  async function handleResume() {
+    if (!selectedProjectId) return;
+    try {
+      await apiFetch(`/api/projects/${selectedProjectId}/resume`, { method: 'POST' });
+      await loadProject(selectedProjectId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to resume');
+    }
+  }
+
+  async function handleCancel() {
+    if (!selectedProjectId || !confirm('Are you sure you want to cancel this project workflow?')) return;
+    try {
+      await apiFetch(`/api/projects/${selectedProjectId}/cancel`, { method: 'POST' });
+      await loadProject(selectedProjectId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to cancel');
+    }
+  }
+
   const tasks = project?.workflowExecutions?.[0]?.tasks ?? [];
   const pendingApprovals = approvals.filter((a) => a.status === 'pending');
+  const progressPercent = tasks.length > 0 
+    ? (tasks.filter(t => t.status === 'COMPLETED' || t.status === 'APPROVED').length / tasks.length) * 100 
+    : 0;
   const STATUS_COLORS: Record<string, string> = {
     draft: 'text-slate-400', planning: 'text-yellow-400', running: 'text-indigo-400',
     completed: 'text-emerald-400', paused: 'text-amber-400', cancelled: 'text-red-400',
@@ -155,6 +214,17 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Sound FX Toggle */}
+            <button
+              onClick={() => {
+                if (soundEnabled) { disable(); setSoundEnabled(false); }
+                else { enable(); setSoundEnabled(true); }
+              }}
+              className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${soundEnabled ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}
+            >
+              {soundEnabled ? '🔊 Sound On' : '🔇 Sound Off'}
+            </button>
+
             {project && (project.status === 'draft' || project.status === 'planning') && (
               <button
                 onClick={handleStart}
@@ -163,6 +233,40 @@ export default function HomePage() {
               >
                 {starting ? 'Starting...' : '▶ Start Workflow'}
               </button>
+            )}
+
+            {project && project.status === 'running' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePause}
+                  className="bg-amber-600/80 hover:bg-amber-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  ⏸ Pause
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="bg-rose-600/80 hover:bg-rose-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  ✕ Cancel
+                </button>
+              </div>
+            )}
+
+            {project && project.status === 'paused' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleResume}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  ▶ Resume
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="bg-rose-600/80 hover:bg-rose-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  ✕ Cancel
+                </button>
+              </div>
             )}
           </div>
         </header>
@@ -188,27 +292,58 @@ export default function HomePage() {
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {/* Goal */}
                 <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60">
-                  <p className="text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">Business Goal</p>
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Business Goal</p>
+                    <button
+                      onClick={() => setShowFeedbackModal(true)}
+                      className="text-[10px] px-2 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition-colors"
+                    >
+                      💬 Feedback
+                    </button>
+                  </div>
                   <p className="text-sm text-slate-200">{project.goal}</p>
+
+                  {/* Progress Bar (PRD §26) */}
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="text-slate-400">Workflow Progress</span>
+                      <span className="text-white font-semibold">{Math.round(progressPercent)}%</span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-slate-700 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                    <div className="flex gap-4 mt-2 text-[10px] text-slate-500">
+                      <span>Active: <strong className="text-slate-300">{tasks.filter((t) => ['QUEUED','ASSIGNED','RUNNING','REVIEW'].includes(t.status)).length}</strong></span>
+                      <span>Completed: <strong className="text-slate-300">{tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'APPROVED').length}</strong></span>
+                      <span>Blocked/Failed: <strong className="text-slate-300">{tasks.filter((t) => t.status === 'BLOCKED' || t.status === 'FAILED').length}</strong></span>
+                    </div>
+                  </div>
+
                   <div className="flex gap-4 mt-3 text-xs text-slate-500">
                     <span>Autonomy Level: <strong className="text-slate-300">{project.autonomyLevel}</strong></span>
                     <span>Tokens Used: <strong className="text-slate-300">{project.usedTokens.toLocaleString()}</strong></span>
                   </div>
                 </div>
 
+                {/* Budget & Cost Tracker */}
+                <BudgetPanel projectId={selectedProjectId} />
+
                 {/* Tabs */}
-                <div className="flex gap-1 p-1 bg-slate-800/60 rounded-xl border border-slate-700/60">
-                  {(['tasks', 'approvals', '3d-office', 'activity'] as Tab[]).map((tab) => (
+                <div className="flex gap-1 p-1 bg-slate-800/60 rounded-xl border border-slate-700/60 flex-wrap">
+                  {(['tasks', 'dag', 'roster', 'approvals', '3d-office', 'activity'] as Tab[]).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors ${
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors whitespace-nowrap ${
                         activeTab === tab
                           ? 'bg-indigo-600 text-white'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      {tab === '3d-office' ? '🏢 3D Office' : tab}
+                      {tab === '3d-office' ? '🏢 Office' : tab === 'dag' ? 'DAG' : tab === 'roster' ? 'Agents' : tab}
                       {tab === 'approvals' && pendingApprovals.length > 0 && (
                         <span className="ml-1.5 bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
                           {pendingApprovals.length}
@@ -218,13 +353,43 @@ export default function HomePage() {
                   ))}
                 </div>
 
-                {activeTab === 'tasks' && <TaskList tasks={tasks} />}
+                {activeTab === 'tasks' && (
+                  <TaskList
+                    tasks={tasks}
+                    onViewArtifacts={(taskId, taskTitle) => setArtifactView({ taskId, taskTitle })}
+                  />
+                )}
+                {activeTab === 'dag' && (
+                  <WorkflowDagVisualizer
+                    tasks={tasks}
+                    onSelectTask={(taskId) => {
+                      const task = tasks.find((t) => t.id === taskId);
+                      if (task && (task.status === 'COMPLETED' || task.status === 'APPROVED')) {
+                        setArtifactView({ taskId: task.id, taskTitle: task.title });
+                      }
+                    }}
+                  />
+                )}
+                {activeTab === 'roster' && selectedProjectId && (
+                  <AgentRosterTab
+                    projectId={selectedProjectId}
+                    onInspectAgent={setInspectedAgentId}
+                  />
+                )}
                 {activeTab === 'approvals' && (
                   <ApprovalCenter approvals={approvals} onDecided={() => loadApprovals(selectedProjectId)} />
                 )}
                 {activeTab === '3d-office' && (
                   <div className="h-[65vh]">
-                    <Office3DCanvas events={events} />
+                    <Office3DCanvas
+                      events={events}
+                      onSelectAgent={(role) => {
+                        const taskWithAgent = tasks.find((t) => t.agentRole === role && t.assignedAgentId);
+                        if (taskWithAgent?.assignedAgentId) {
+                          setInspectedAgentId(taskWithAgent.assignedAgentId);
+                        }
+                      }}
+                    />
                   </div>
                 )}
                 {activeTab === 'activity' && (
@@ -234,9 +399,30 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* Right panel — live activity */}
-              <div className="w-80 flex-shrink-0 border-l border-slate-800 p-4 overflow-y-auto">
+              {/* Right panel — live activity + agent list */}
+              <div className="w-80 flex-shrink-0 border-l border-slate-800 p-4 overflow-y-auto space-y-4">
                 <ActivityFeed events={events} connected={connected} />
+
+                {/* Active Agents */}
+                {project.workflowExecutions?.[0] && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Active Agents</p>
+                    <div className="space-y-1.5">
+                      {project.workflowExecutions[0].tasks
+                        .filter((t) => t.assignedAgentId)
+                        .map((t) => (
+                          <button
+                            key={t.assignedAgentId}
+                            onClick={() => setInspectedAgentId(t.assignedAgentId!)}
+                            className="w-full text-left px-2.5 py-2 rounded-lg bg-slate-800/60 border border-slate-700/60 hover:border-indigo-500/50 transition-colors text-xs"
+                          >
+                            <p className="text-white font-medium truncate">{t.agentRole}</p>
+                            <p className="text-slate-400 truncate">{t.title}</p>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -246,6 +432,28 @@ export default function HomePage() {
           )}
         </div>
       </main>
+
+      {/* Agent Inspector Slide-over */}
+      <AgentInspectorModal
+        agentId={inspectedAgentId}
+        onClose={() => setInspectedAgentId(null)}
+      />
+
+      {/* Artifact Viewer */}
+      <ArtifactViewerModal
+        taskId={artifactView?.taskId ?? null}
+        taskTitle={artifactView?.taskTitle}
+        onClose={() => setArtifactView(null)}
+      />
+
+      {/* Customer Feedback Modal */}
+      {showFeedbackModal && selectedProjectId && (
+        <CustomerFeedbackModal
+          projectId={selectedProjectId}
+          onClose={() => setShowFeedbackModal(false)}
+          onSubmitted={() => loadProject(selectedProjectId)}
+        />
+      )}
     </div>
   );
 }

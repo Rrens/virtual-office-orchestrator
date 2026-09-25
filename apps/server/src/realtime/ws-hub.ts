@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import { createConsumer } from '../events/kafka.js';
+import { prisma } from '../db.js';
 import { KAFKA_TOPICS } from '@virtual-office/shared';
 
 const clients = new Map<string, Set<WebSocket>>();
@@ -67,6 +68,15 @@ export async function startEventBroadcaster(): Promise<void> {
         const event = JSON.parse(message.value.toString());
         if (event.projectId) {
           broadcastToProject(event.projectId, event);
+
+          // Persist to EventLog (PRD §30)
+          prisma.eventLog.create({
+            data: {
+              type: event.type ?? 'unknown',
+              projectId: event.projectId,
+              payload: JSON.stringify(event),
+            },
+          }).catch(() => {});
         }
       } catch {
         // skip malformed messages

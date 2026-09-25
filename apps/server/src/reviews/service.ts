@@ -4,6 +4,7 @@ import { agentStateMachine } from '../agents/state-machine.js';
 import { publishEvent } from '../events/kafka.js';
 import { randomUUID } from 'crypto';
 import type { ReviewResult } from '@virtual-office/shared';
+import { workflowEngine } from '../workflows/engine.js';
 
 const REVIEW_ROLES: Record<string, string[]> = {
   'backend-engineer': ['qa-engineer', 'security-engineer'],
@@ -52,21 +53,51 @@ export class ReviewService {
     await agentStateMachine.startThinking(reviewerAgent.id);
     await agentStateMachine.startWorking(reviewerAgent.id);
 
+    // Emit structured handoff event (PRD §17)
+    await publishEvent({
+      eventId: randomUUID(),
+      timestamp: new Date().toISOString(),
+      projectId: task.workflowExecution.projectId,
+      workflowExecutionId: task.workflowExecutionId,
+      type: 'task.handoff',
+      taskId,
+      fromAgentId: task.assignedAgent.id,
+      toAgentId: reviewerAgent.id,
+      payload: {
+        handoffId: randomUUID(),
+        fromAgent: task.agentRole,
+        toAgent: reviewerRole,
+        taskId,
+        workflowId: task.workflowExecutionId,
+        status: 'READY_FOR_REVIEW',
+        summary: `Task "${task.title}" completed. Handed off to ${reviewerAgent.definition.name} for QA/Security review.`,
+        artifacts: task.artifacts.map((a) => ({
+          path: a.path,
+          type: a.type as any,
+          version: '1.0.0',
+        })),
+        knownIssues: [],
+        nextRecommendedAction: `Perform automated ${reviewerRole} review on artifacts`,
+      },
+    });
+
     const artifactSummary = task.artifacts
       .map((a) => `${a.name}: ${a.content?.slice(0, 500) ?? '(no content)'}`)
       .join('\n\n');
+
+    const selectedTier = modelRouter.selectTier(reviewerRole, 'high');
 
     const agentRun = await prisma.agentRun.create({
       data: {
         taskId,
         agentInstanceId: reviewerAgent.id,
-        modelUsed: reviewerAgent.definition.modelTier,
+        modelUsed: selectedTier,
         status: 'running',
       },
     });
 
     try {
-      const response = await modelRouter.routeByTier(reviewerAgent.definition.modelTier, {
+      const response = await modelRouter.routeByTier(selectedTier, {
         messages: [
           {
             role: 'system',
@@ -145,6 +176,9 @@ Output only valid JSON, no markdown.`,
       previousStatus: 'REVIEW',
       newStatus: 'COMPLETED',
     });
+
+    await workflowEngine.resolveAndQueueTasks(workflowExecutionId);
+    await workflowEngine.checkWorkflowCompletion(workflowExecutionId);
   }
 
   async rejectTask(taskId: string, projectId: string, workflowExecutionId: string): Promise<void> {

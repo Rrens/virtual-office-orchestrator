@@ -29,6 +29,8 @@ model Project {
   status             String              @default("draft") // draft, planning, running, paused, completed, cancelled
   autonomyLevel      Int                 @default(1) @map("autonomy_level") // 0-4
   budgetTokens       Int?                @map("budget_tokens")
+  taskBudgetTokens   Int?                @map("task_budget_tokens")
+  agentBudgetTokens  Int?                @map("agent_budget_tokens")
   usedTokens         Int                 @default(0) @map("used_tokens")
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")

@@ -6,9 +6,14 @@ import { modelRouter } from '../models/router.js';
 import { publishEvent } from '../events/kafka.js';
 import { randomUUID } from 'crypto';
 import { KAFKA_TOPICS } from '@virtual-office/shared';
+import { ReviewService } from '../reviews/service.js';
+import { BudgetTracker } from '../memory/budget.js';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
+
+const reviewService = new ReviewService();
+const budgetTracker = new BudgetTracker();
 
 export async function startTaskConsumer(): Promise<void> {
   const consumer = await createConsumer('virtual-office-task-workers');
@@ -95,17 +100,19 @@ async function handleTaskQueued(event: any): Promise<void> {
 }
 
 async function executeTask(task: any, agent: any): Promise<void> {
+  const selectedTier = modelRouter.selectTier(task.agentRole, 'medium');
+
   const agentRun = await prisma.agentRun.create({
     data: {
       taskId: task.id,
       agentInstanceId: agent.id,
-      modelUsed: agent.definition.modelTier,
+      modelUsed: selectedTier,
       status: 'running',
     },
   });
 
   try {
-    const response = await modelRouter.routeByTier(agent.definition.modelTier, {
+    const response = await modelRouter.routeByTier(selectedTier, {
       messages: [
         {
           role: 'system',
@@ -131,6 +138,59 @@ async function executeTask(task: any, agent: any): Promise<void> {
       },
     });
 
+    // Emit deployment event for DevOps agent tasks (PRD §29)
+    if (task.agentRole === 'devops') {
+      await publishEvent({
+        eventId: randomUUID(),
+        timestamp: new Date().toISOString(),
+        projectId: task.workflowExecution?.projectId ?? task.workflowExecutionId,
+        workflowExecutionId: task.workflowExecutionId,
+        type: 'deployment.started',
+        environment: 'staging',
+        agentInstanceId: agent.id,
+      } as any);
+
+      setTimeout(async () => {
+        await publishEvent({
+          eventId: randomUUID(),
+          timestamp: new Date().toISOString(),
+          projectId: task.workflowExecution?.projectId ?? task.workflowExecutionId,
+          workflowExecutionId: task.workflowExecutionId,
+          type: 'deployment.completed',
+          environment: 'staging',
+          agentInstanceId: agent.id,
+        } as any);
+      }, 1000);
+    }
+
+    // Save output artifact
+    await prisma.artifact.create({
+      data: {
+        taskId: task.id,
+        agentInstanceId: agent.id,
+        type: 'documentation',
+        name: `${task.title} Output`,
+        path: `artifacts/${task.id}/output.md`,
+        mimeType: 'text/markdown',
+        sizeBytes: Buffer.byteLength(response.content),
+        content: response.content,
+      },
+    });
+
+    // Track token usage and auto-pause if budget exceeded
+    const workflowExecForBudget = await prisma.workflowExecution.findUnique({
+      where: { id: task.workflowExecutionId },
+      select: { projectId: true },
+    });
+    if (workflowExecForBudget) {
+      await budgetTracker.recordUsage(
+        workflowExecForBudget.projectId,
+        selectedTier,
+        response.promptTokens,
+        response.completionTokens
+      );
+    }
+
     await prisma.task.update({
       where: { id: task.id },
       data: { status: 'REVIEW' },
@@ -149,82 +209,15 @@ async function executeTask(task: any, agent: any): Promise<void> {
       newStatus: 'REVIEW',
     });
 
-    // Auto-approve for autonomy level >= 2
     const project = await prisma.project.findUnique({
       where: { id: task.workflowExecution?.projectId ?? '' },
     });
 
     if (project && project.autonomyLevel >= 2) {
-      await autoApproveTask(task, agent, response.content);
+      await reviewService.triggerAutoReview(task.id);
     }
   } catch (err) {
     await handleTaskFailure(task, agent, agentRun.id, err);
-  }
-}
-
-async function autoApproveTask(task: any, agent: any, output: string): Promise<void> {
-  await prisma.artifact.create({
-    data: {
-      taskId: task.id,
-      agentInstanceId: agent.id,
-      type: 'documentation',
-      name: `${task.title} Output`,
-      path: `artifacts/${task.id}/output.md`,
-      mimeType: 'text/markdown',
-      sizeBytes: Buffer.byteLength(output),
-      content: output,
-    },
-  });
-
-  await prisma.task.update({ where: { id: task.id }, data: { status: 'COMPLETED' } });
-  await agentStateMachine.complete(agent.id);
-
-  const workflowExec = await prisma.workflowExecution.findUnique({
-    where: { id: task.workflowExecutionId },
-    select: { projectId: true },
-  });
-
-  if (workflowExec) {
-    await publishEvent({
-      eventId: randomUUID(),
-      timestamp: new Date().toISOString(),
-      projectId: workflowExec.projectId,
-      workflowExecutionId: task.workflowExecutionId,
-      type: 'task.completed',
-      taskId: task.id,
-      previousStatus: 'REVIEW',
-      newStatus: 'COMPLETED',
-    });
-
-    await workflowEngine.resolveAndQueueTasks(task.workflowExecutionId);
-
-    const remaining = await prisma.task.count({
-      where: {
-        workflowExecutionId: task.workflowExecutionId,
-        status: { notIn: ['COMPLETED', 'APPROVED', 'CANCELLED'] },
-      },
-    });
-
-    if (remaining === 0) {
-      await prisma.workflowExecution.update({
-        where: { id: task.workflowExecutionId },
-        data: { status: 'completed', completedAt: new Date() },
-      });
-
-      await prisma.project.update({
-        where: { id: workflowExec.projectId },
-        data: { status: 'completed' },
-      });
-
-      await publishEvent({
-        eventId: randomUUID(),
-        timestamp: new Date().toISOString(),
-        projectId: workflowExec.projectId,
-        workflowExecutionId: task.workflowExecutionId,
-        type: 'workflow.completed',
-        durationMs: 0,
-      });
-    }
   }
 }
 
@@ -240,17 +233,35 @@ async function handleTaskFailure(task: any, agent: any, agentRunId: string, err:
   await agentStateMachine.fail(agent.id);
 
   if (newRetryCount < MAX_RETRIES) {
+    // Try to reassign to a different idle agent of the same role (PRD §36: Agent failure -> reassign)
+    const workflowExec = await prisma.workflowExecution.findUnique({
+      where: { id: task.workflowExecutionId },
+      select: { projectId: true },
+    });
+
+    const alternateAgent = workflowExec
+      ? await prisma.agentInstance.findFirst({
+          where: {
+            projectId: workflowExec.projectId,
+            definition: { role: task.agentRole },
+            status: 'idle',
+            id: { not: agent.id },
+          },
+        })
+      : null;
+
+    const assignedAgentId = alternateAgent ? alternateAgent.id : null;
+
     await prisma.task.update({
       where: { id: task.id },
-      data: { status: 'QUEUED', retryCount: newRetryCount },
+      data: {
+        status: 'QUEUED',
+        retryCount: newRetryCount,
+        assignedAgentId,
+      },
     });
 
     setTimeout(async () => {
-      const workflowExec = await prisma.workflowExecution.findUnique({
-        where: { id: task.workflowExecutionId },
-        select: { projectId: true },
-      });
-
       if (workflowExec) {
         await publishEvent({
           eventId: randomUUID(),
@@ -271,6 +282,9 @@ async function handleTaskFailure(task: any, agent: any, agentRunId: string, err:
     });
 
     await agentStateMachine.escalate(agent.id);
+
+    // PRD §36: pause downstream tasks and diagnose workflow failure
+    await workflowEngine.diagnoseAndHandleFailure(task.workflowExecutionId, task.id);
 
     const workflowExec = await prisma.workflowExecution.findUnique({
       where: { id: task.workflowExecutionId },
