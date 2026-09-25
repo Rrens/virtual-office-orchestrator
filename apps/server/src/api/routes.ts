@@ -6,6 +6,7 @@ import { goalPlanner } from '../orchestrator/planner.js';
 import { approvalService } from '../approvals/service.js';
 import { memoryService } from '../memory/service.js';
 import { budgetTracker } from '../memory/budget.js';
+import { closedLoopService, type CustomerFeedbackInput } from '../feedback/closed-loop.js';
 import { prisma } from '../db.js';
 import type { AgentRole, TaskStatus, MemoryScope } from '@virtual-office/shared';
 
@@ -170,6 +171,22 @@ export async function registerRoutes(app: FastifyInstance) {
       return await budgetTracker.getProjectCostSummary(id);
     } catch (err) {
       return reply.status(404).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // Closed-loop Customer Feedback
+  app.post('/api/projects/:id/feedback', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as Omit<CustomerFeedbackInput, 'projectId'>;
+
+    try {
+      const result = await closedLoopService.processFeedback({
+        projectId: id,
+        ...body,
+      });
+      return reply.status(201).send(result);
+    } catch (err) {
+      return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 }
