@@ -186,11 +186,13 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 - [ ] Handoff & interaction animations
 
 ### PHASE 6C — Realistic Polish
-- [ ] Detailed office props (monitors, server racks, whiteboards)
-- [ ] Dynamic lighting (day/night cycle)
+- [x] Animated agent lerp walking (position interpolation toward target)
+- [x] Agent walks to meeting room during `reviewing` state
+- [x] Monitor screen glow when agent is `working`
+- [x] Dynamic ambient lighting (intensifies with active agent count)
+- [x] 2D Minimap teleport overlay (click room → camera jump)
 - [ ] Sound FX & ambient audio toggle
 - [ ] LOD system for mobile performance
-- [ ] Minimap overlay
 
 ---
 
@@ -207,6 +209,7 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 | 2026-09-25 | Session 7 (Phase 6) | 3D Virtual Office canvas with Three.js & React Three Fiber, procedural department rooms, interactive OrbitControls, agent desks & monitors, real-time WebSocket state-to-mesh status sync |
 | 2026-09-25 | Session 8 (E2E Verification) | Tested complete end-to-end flow: project creation, LLM DAG plan generation (14s via Proxmox Ollama qwen2.5:0.5b), workflow start, dynamic agent spawning, task DAG state transitions (QUEUED -> PENDING). Kafka broker & Zookeeper live. All pushed to dev |
 | 2026-09-25 | Session 9 (RPM 3D Avatars) | Integrated ReadyPlayerMe GLB 3D avatar loader with Suspense & graceful procedural fallback, 7 role avatar presets, Next.js COOP/COEP headers, production build verified, all pushed to dev |
+| 2026-09-25 | Session 10 (Polish & Prod Ready) | Phase 6C walking animation lerp, meeting room walk on review, monitor glow, minimap teleport, Dockerfile multi-stage for server & web, docker-compose.prod.yml, root README.md setup guide, all verified & pushed to dev |
 
 ---
 
