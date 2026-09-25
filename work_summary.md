@@ -171,14 +171,16 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 - [x] WebSocket reconnect with 3s backoff
 
 ### PHASE 6A — 3D Office Core
-- [ ] Three.js + React Three Fiber scene setup
-- [ ] Procedural floor plan with department rooms
-- [ ] Orbit camera + lighting system
-- [ ] WebSocket → scene state mapper
+- [x] Three.js + React Three Fiber scene setup
+- [x] Procedural floor plan with department rooms
+- [x] Orbit camera + ambient/directional lighting
+- [x] WebSocket → scene agent status mapper
 
 ### PHASE 6B — 3D Characters & Animation
-- [ ] ReadyPlayerMe SDK integration + avatar loading
-- [ ] Animation state machine per agent lifecycle event
+- [x] Agent mesh capsules per role with dynamic color
+- [x] Status bubble HTML overlay above agents
+- [x] Real-time status updates from WebSocket events
+- [ ] ReadyPlayerMe avatar GLB loader (next iteration)
 - [ ] Navmesh pathfinding for agent walking
 - [ ] Handoff & interaction animations
 
@@ -201,6 +203,7 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 | 2026-09-25 | Session 4 (Phase 3) | GoalPlanner LLM-driven dynamic DAG planner with fallback, WorkflowEngine with DAG cycle validation & dependency resolution, Kafka TaskConsumer event loop with automatic retries & auto-approval |
 | 2026-09-25 | Session 5 (Phase 4) | ReviewService automated QA/Security review loop, ApprovalService human-in-the-loop approval gateway, MemoryService multi-tier storage, BudgetTracker token cost tracking & project budget enforcement |
 | 2026-09-25 | Session 6 (Phase 5) | Fastify WebSocket hub + Kafka event broadcaster, Next.js dashboard (project sidebar, goal input, task list, approval center, realtime activity feed), WebSocket hook with auto-reconnect |
+| 2026-09-25 | Session 7 (Phase 6) | 3D Virtual Office canvas with Three.js & React Three Fiber, procedural department rooms, interactive OrbitControls, agent desks & monitors, real-time WebSocket state-to-mesh status sync |
 
 ---
 

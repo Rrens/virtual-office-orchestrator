@@ -5,6 +5,7 @@ import { CreateProjectForm } from './components/CreateProjectForm';
 import { ActivityFeed } from './components/ActivityFeed';
 import { TaskList } from './components/TaskList';
 import { ApprovalCenter } from './components/ApprovalCenter';
+import { Office3DCanvas } from './components/Office3DCanvas';
 import { useProjectWebSocket } from '../hooks/useProjectWebSocket';
 import { apiFetch } from '../lib/api';
 
@@ -37,7 +38,7 @@ interface Approval {
   task?: { title: string };
 }
 
-type Tab = 'tasks' | 'approvals' | 'activity';
+type Tab = 'tasks' | 'approvals' | 'activity' | '3d-office';
 
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -197,7 +198,7 @@ export default function HomePage() {
 
                 {/* Tabs */}
                 <div className="flex gap-1 p-1 bg-slate-800/60 rounded-xl border border-slate-700/60">
-                  {(['tasks', 'approvals', 'activity'] as Tab[]).map((tab) => (
+                  {(['tasks', 'approvals', '3d-office', 'activity'] as Tab[]).map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
@@ -207,7 +208,7 @@ export default function HomePage() {
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      {tab}
+                      {tab === '3d-office' ? '🏢 3D Office' : tab}
                       {tab === 'approvals' && pendingApprovals.length > 0 && (
                         <span className="ml-1.5 bg-rose-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
                           {pendingApprovals.length}
@@ -220,6 +221,11 @@ export default function HomePage() {
                 {activeTab === 'tasks' && <TaskList tasks={tasks} />}
                 {activeTab === 'approvals' && (
                   <ApprovalCenter approvals={approvals} onDecided={() => loadApprovals(selectedProjectId)} />
+                )}
+                {activeTab === '3d-office' && (
+                  <div className="h-[65vh]">
+                    <Office3DCanvas events={events} />
+                  </div>
                 )}
                 {activeTab === 'activity' && (
                   <div className="h-[60vh]">
