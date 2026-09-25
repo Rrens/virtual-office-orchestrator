@@ -177,10 +177,11 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 - [x] WebSocket → scene agent status mapper
 
 ### PHASE 6B — 3D Characters & Animation
-- [x] Agent mesh capsules per role with dynamic color
+- [x] ReadyPlayerMe avatar GLB loader with Suspense & fallback capsule mesh
+- [x] Preset RPM avatars for 7 core roles (orchestrator, PM, backend, frontend, UI/UX, QA, DevOps)
+- [x] Dynamic clone scene & independent transform positioning
 - [x] Status bubble HTML overlay above agents
 - [x] Real-time status updates from WebSocket events
-- [ ] ReadyPlayerMe avatar GLB loader (next iteration)
 - [ ] Navmesh pathfinding for agent walking
 - [ ] Handoff & interaction animations
 
@@ -205,6 +206,7 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 | 2026-09-25 | Session 6 (Phase 5) | Fastify WebSocket hub + Kafka event broadcaster, Next.js dashboard (project sidebar, goal input, task list, approval center, realtime activity feed), WebSocket hook with auto-reconnect |
 | 2026-09-25 | Session 7 (Phase 6) | 3D Virtual Office canvas with Three.js & React Three Fiber, procedural department rooms, interactive OrbitControls, agent desks & monitors, real-time WebSocket state-to-mesh status sync |
 | 2026-09-25 | Session 8 (E2E Verification) | Tested complete end-to-end flow: project creation, LLM DAG plan generation (14s via Proxmox Ollama qwen2.5:0.5b), workflow start, dynamic agent spawning, task DAG state transitions (QUEUED -> PENDING). Kafka broker & Zookeeper live. All pushed to dev |
+| 2026-09-25 | Session 9 (RPM 3D Avatars) | Integrated ReadyPlayerMe GLB 3D avatar loader with Suspense & graceful procedural fallback, 7 role avatar presets, Next.js COOP/COEP headers, production build verified, all pushed to dev |
 
 ---
 
