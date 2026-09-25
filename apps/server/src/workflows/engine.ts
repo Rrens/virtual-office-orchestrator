@@ -92,6 +92,8 @@ export class WorkflowEngine {
       projectId,
       workflowExecutionId: execution.id,
       type: 'workflow.started',
+      agentRole: 'orchestrator',
+      message: `Chief Orchestrator memulai workflow (${plan.tasks.length} task).`,
       totalTasks: plan.tasks.length,
     });
 
@@ -139,6 +141,8 @@ export class WorkflowEngine {
             workflowExecutionId,
             type: 'task.started',
             taskId: task.id,
+            agentRole: task.agentRole,
+            message: `Task "${task.title}" siap dikerjakan oleh ${task.agentRole}.`,
             previousStatus: 'PENDING',
             newStatus: 'QUEUED',
           });
@@ -191,6 +195,8 @@ export class WorkflowEngine {
         projectId: execution.projectId,
         workflowExecutionId,
         type: 'workflow.completed',
+        agentRole: 'orchestrator',
+        message: `Workflow selesai! ${execution.tasks.length} task dikerjakan dalam ${Math.round(durationMs / 1000)}s.`,
         durationMs,
       });
 

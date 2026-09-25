@@ -2,6 +2,36 @@ import { modelRouter } from '../models/router.js';
 import type { DAGTask, ExecutionPlan } from './types.js';
 import type { AgentRole } from '@virtual-office/shared';
 
+const VALID_ROLES = [
+  'orchestrator', 'business-strategist', 'product-manager', 'business-analyst',
+  'ux-researcher', 'product-analyst', 'ui-ux-designer', 'design-system-designer',
+  'brand-designer', 'backend-engineer', 'frontend-engineer', 'mobile-engineer',
+  'qa-engineer', 'security-engineer', 'penetration-tester', 'devops',
+  'performance-engineer', 'ai-engineer', 'digital-marketer', 'seo-specialist',
+  'content-creator', 'growth-analyst', 'sales-representative', 'sales-researcher',
+  'account-manager', 'customer-service', 'customer-success', 'data-engineer',
+  'data-analyst', 'operations-manager'
+];
+
+const DEPARTMENT_ROLE_MAP: Record<string, string> = {
+  'engineering': 'backend-engineer',
+  'product': 'product-manager',
+  'design': 'ui-ux-designer',
+  'executive': 'orchestrator',
+  'growth': 'digital-marketer',
+  'sales': 'sales-representative',
+  'customer': 'customer-service',
+  'data': 'data-engineer',
+  'operations': 'operations-manager',
+};
+
+function normalizeRole(role: string): AgentRole {
+  const clean = String(role).toLowerCase().trim();
+  if (VALID_ROLES.includes(clean)) return clean as AgentRole;
+  if (DEPARTMENT_ROLE_MAP[clean]) return DEPARTMENT_ROLE_MAP[clean] as AgentRole;
+  return 'backend-engineer';
+}
+
 const ORCHESTRATOR_SYSTEM_PROMPT = `You are the Chief Orchestrator of an AI Virtual Company.
 Your job is to decompose high-level business goals into a structured Directed Acyclic Graph (DAG) of actionable tasks.
 
@@ -68,11 +98,17 @@ export class GoalPlanner {
       const cleanJson = response.content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
       const parsed = JSON.parse(cleanJson);
 
+      // Normalize agent roles: LLM sometimes returns department names instead of specific roles
+      const tasks = (parsed.tasks ?? []).map((t: any) => ({
+        ...t,
+        agentRole: normalizeRole(t.agentRole),
+      }));
+
       return {
         projectId,
         goal,
         departments: parsed.departments ?? ['product', 'engineering'],
-        tasks: parsed.tasks ?? [],
+        tasks,
         createdAt: new Date().toISOString(),
       };
     } catch (err) {

@@ -818,3 +818,7 @@ Not:
 "This is a collection of AI chatbots."
 
 It should feel like an operating system for an AI-native company.
+
+
+# reference WEB
+https://tony-steel-photographs-strategy.trycloudflare.com/kerja

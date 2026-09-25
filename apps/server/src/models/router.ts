@@ -30,8 +30,20 @@ export class ModelRouter {
   }
 
   selectTier(agentRole: string, complexity: Complexity = 'medium'): string {
-    if (HIGH_RISK_ROLES.has(agentRole)) return 'tier3_cloud';
-    return COMPLEXITY_TIER[complexity];
+    const hasNineRouter = Boolean(process.env.NINEROUTER_API_KEY);
+    const hasCloud = Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
+
+    if (HIGH_RISK_ROLES.has(agentRole)) {
+      if (hasCloud) return 'tier3_cloud';
+      if (hasNineRouter) return 'tier2_9router';
+      return 'tier1_ollama';
+    }
+
+    if (complexity === 'high' && hasNineRouter) return 'tier2_9router';
+    if (complexity === 'high' && hasCloud) return 'tier3_cloud';
+
+    // Default: prefer Ollama locally
+    return 'tier1_ollama';
   }
 
   async routeByComplexity(

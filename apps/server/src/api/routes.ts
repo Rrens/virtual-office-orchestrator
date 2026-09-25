@@ -13,6 +13,8 @@ import { randomUUID } from 'crypto';
 import { requireFounder } from './auth.js';
 import type { AgentRole, TaskStatus, MemoryScope } from '@virtual-office/shared';
 
+import { readLogs, listLogDates, type LogLevel } from '../utils/logger.js';
+
 export async function registerRoutes(app: FastifyInstance) {
   // Organizations & Projects
   app.post('/api/projects', { preHandler: requireFounder }, async (req, reply) => {
@@ -400,5 +402,28 @@ export async function registerRoutes(app: FastifyInstance) {
     } catch (err) {
       return reply.status(400).send({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  // Centralized log viewer
+  app.get('/api/logs', async (req) => {
+    const { date, level, module, search, limit } = req.query as {
+      date?: string;
+      level?: LogLevel;
+      module?: string;
+      search?: string;
+      limit?: string;
+    };
+
+    const logs = await readLogs({
+      date,
+      level,
+      module,
+      search,
+      limit: limit ? Number(limit) : 200,
+    });
+
+    const dates = await listLogDates();
+
+    return { date: date || new Date().toISOString().split('T')[0], dates, logs };
   });
 }

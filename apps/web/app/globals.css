@@ -1,26 +1,161 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #efeae3;
+  --panel: rgba(255, 255, 255, 0.90);
+  --panel-solid: #ffffff;
+  --line: #e6dfd5;
+  --line-strong: #d6cdc0;
+  --text: #2b2a28;
+  --muted: #6f6a62;
+  --faint: #9a938a;
+  --feed-text: #3d3a36;
+
+  /* Status Colors */
+  --ok: #2f9a6d;
+  --ok-active: #23a55f;
+  --warn: #c98a00;
+  --warn-bg: #fff4d6;
+  --warn-border: #f0d58a;
+  --warn-text: #7a5800;
+  --bad: #d64545;
+  --bad-bg: #fde6e6;
+  --bad-border: #f1b3b3;
+  --bad-text: #8f2323;
+
+  /* Agent Role Colors */
+  --pingot: #3f6fd1;
+  --zaki: #2f9a6d;
+  --lulu: #d9772f;
+  --risko: #7a5cc4;
+
+  --shadow: 0 6px 24px rgba(60, 45, 25, 0.08);
+  --shadow-lg: 0 10px 28px rgba(60, 45, 25, 0.14);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  user-select: none;
+}
+
+/* Glassmorphism Panel */
+.card-ui {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Pill Chip */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Speech Bubble in 3D scene */
+.speech-bubble {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid #eadfce;
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(60, 45, 25, 0.18);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px 6px 0;
+  border-style: solid;
+  border-color: #ffffff transparent;
+  display: block;
+  width: 0;
+}
+
+.speech-bubble-warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-text);
+}
+
+.speech-bubble-warn::after {
+  border-color: var(--warn-bg) transparent;
+}
+
+/* Live Dot Pulse */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.live-dot {
+  animation: live-pulse 2s infinite ease-in-out;
+}
+
+/* Feed Entrance Animation */
+@keyframes feed-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.feed-item-new {
+  animation: feed-in 0.25s ease-out forwards;
+  background-color: #fbf6ec;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6cdc0;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b8ad9e;
 }

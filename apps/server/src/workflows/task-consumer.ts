@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { KAFKA_TOPICS } from '@virtual-office/shared';
 import { ReviewService } from '../reviews/service.js';
 import { BudgetTracker } from '../memory/budget.js';
+import { logger } from '../utils/logger.js';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
@@ -48,10 +49,45 @@ export async function startTaskConsumer(): Promise<void> {
     },
   });
 
+  // Boot scan: pick up any QUEUED tasks that survived a server restart
+  await scanAndAssignQueuedTasks();
+
+  // Periodic scanner: every 30s re-check for stuck QUEUED tasks
+  setInterval(async () => {
+    try {
+      await scanAndAssignQueuedTasks();
+    } catch (err) {
+      console.warn('[TaskConsumer] Periodic scan error:', err instanceof Error ? err.message : err);
+    }
+  }, 30_000);
+
   console.log('[TaskConsumer] Kafka consumer started');
 }
 
+async function scanAndAssignQueuedTasks(): Promise<void> {
+  const queuedTasks = await prisma.task.findMany({
+    where: { status: 'QUEUED', assignedAgentId: null },
+    include: { workflowExecution: true },
+    take: 20,
+  });
+
+  if (queuedTasks.length > 0) {
+    logger.info('TaskScanner', `Found ${queuedTasks.length} unassigned QUEUED task(s)`, {
+      tasks: queuedTasks.map((t) => ({ id: t.id, title: t.title, role: t.agentRole })),
+    });
+  }
+
+  for (const task of queuedTasks) {
+    try {
+      await handleTaskQueued({ taskId: task.id });
+    } catch (err) {
+      logger.warn('TaskScanner', `Failed to assign task ${task.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+}
+
 async function handleWorkflowStarted(event: any): Promise<void> {
+  logger.info('TaskConsumer', `Workflow started ${event.workflowExecutionId}, resolving queue`);
   await workflowEngine.resolveAndQueueTasks(event.workflowExecutionId);
 }
 
@@ -73,9 +109,15 @@ async function handleTaskQueued(event: any): Promise<void> {
   });
 
   if (!agent) {
-    console.warn(`[TaskConsumer] No idle agent for role '${task.agentRole}', task ${task.id} stays QUEUED`);
+    logger.warn('TaskConsumer', `No idle agent for role '${task.agentRole}', task ${task.id} stays QUEUED`);
     return;
   }
+
+  logger.info('TaskConsumer', `Assigning task "${task.title}" to ${agent.definition.name}`, {
+    taskId: task.id,
+    agentId: agent.id,
+    role: task.agentRole,
+  });
 
   await prisma.task.update({ where: { id: task.id }, data: { status: 'ASSIGNED', assignedAgentId: agent.id } });
   await agentStateMachine.assign(agent.id, task.id);
@@ -89,6 +131,9 @@ async function handleTaskQueued(event: any): Promise<void> {
     workflowExecutionId: task.workflowExecutionId,
     type: 'task.assigned',
     taskId: task.id,
+    agentRole: task.agentRole,
+    agentInstanceId: agent.id,
+    message: `${agent.definition.name} mulai mengerjakan: "${task.title}"`,
     previousStatus: 'QUEUED',
     newStatus: 'ASSIGNED',
   });
@@ -101,6 +146,8 @@ async function handleTaskQueued(event: any): Promise<void> {
 
 async function executeTask(task: any, agent: any): Promise<void> {
   const selectedTier = modelRouter.selectTier(task.agentRole, 'medium');
+
+  logger.info('ModelRouter', `Executing task "${task.title}" with role ${task.agentRole} using tier ${selectedTier}`);
 
   const agentRun = await prisma.agentRun.create({
     data: {
@@ -205,6 +252,9 @@ async function executeTask(task: any, agent: any): Promise<void> {
       workflowExecutionId: task.workflowExecutionId,
       type: 'task.review',
       taskId: task.id,
+      agentRole: task.agentRole,
+      agentInstanceId: agent.id,
+      message: `${agent.definition.name} menyelesaikan "${task.title}" — menunggu review.`,
       previousStatus: 'RUNNING',
       newStatus: 'REVIEW',
     });
@@ -270,6 +320,9 @@ async function handleTaskFailure(task: any, agent: any, agentRunId: string, err:
           workflowExecutionId: task.workflowExecutionId,
           type: 'task.started',
           taskId: task.id,
+          agentRole: task.agentRole,
+          agentInstanceId: agent.id,
+          message: `Retry #${newRetryCount}: ${task.agentRole} mengulang task "${task.title}"`,
           previousStatus: 'FAILED',
           newStatus: 'QUEUED',
         });
@@ -299,6 +352,9 @@ async function handleTaskFailure(task: any, agent: any, agentRunId: string, err:
         workflowExecutionId: task.workflowExecutionId,
         type: 'task.failed',
         taskId: task.id,
+        agentRole: task.agentRole,
+        agentInstanceId: agent.id,
+        message: `${agent.definition.name} gagal menyelesaikan "${task.title}": ${errorMessage.slice(0, 80)}`,
         previousStatus: 'RUNNING',
         newStatus: 'FAILED',
       });

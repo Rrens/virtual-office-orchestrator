@@ -16,6 +16,9 @@ export interface BaseEvent {
   timestamp: string;
   projectId: string;
   workflowExecutionId?: string;
+  agentRole?: string;
+  agentInstanceId?: string;
+  message?: string;
 }
 
 // Agent events

@@ -4,9 +4,16 @@ const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:4000';
 export { API_BASE, WS_BASE };
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const { headers: extraHeaders, body, ...restOptions } = options ?? {};
+  const hasBody = body !== undefined && body !== null;
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
+    ...restOptions,
+    body,
+    headers: {
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      ...(extraHeaders as Record<string, string> | undefined),
+    },
   });
 
   if (!res.ok) {

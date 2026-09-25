@@ -164,6 +164,11 @@ Output only valid JSON, no markdown.`,
   }
 
   async approveTask(taskId: string, projectId: string, workflowExecutionId: string): Promise<void> {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: { assignedAgent: { include: { definition: true } } },
+    });
+
     await prisma.task.update({ where: { id: taskId }, data: { status: 'COMPLETED' } });
 
     await publishEvent({
@@ -173,6 +178,9 @@ Output only valid JSON, no markdown.`,
       workflowExecutionId,
       type: 'task.completed',
       taskId,
+      agentRole: task?.agentRole ?? 'qa-engineer',
+      agentInstanceId: task?.assignedAgentId ?? undefined,
+      message: `Task "${task?.title ?? taskId}" disetujui & selesai!`,
       previousStatus: 'REVIEW',
       newStatus: 'COMPLETED',
     });
