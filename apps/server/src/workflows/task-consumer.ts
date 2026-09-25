@@ -88,7 +88,10 @@ async function handleTaskQueued(event: any): Promise<void> {
     newStatus: 'ASSIGNED',
   });
 
-  await executeTask(task, agent);
+  // Spawn task execution concurrently in background without blocking Kafka event loop
+  executeTask(task, agent).catch((err) => {
+    console.error(`[TaskConsumer] Concurrent execution error on task ${task.id}:`, err);
+  });
 }
 
 async function executeTask(task: any, agent: any): Promise<void> {
