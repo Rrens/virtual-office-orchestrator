@@ -7,6 +7,7 @@ import { prisma } from './db.js';
 import { registerRoutes } from './api/routes.js';
 import { registerAllTools } from './tools/implementations/index.js';
 import { startTaskConsumer } from './workflows/task-consumer.js';
+import { registerWebSocketRoutes, startEventBroadcaster } from './realtime/ws-hub.js';
 
 const app = Fastify({
   logger: {
@@ -43,12 +44,19 @@ app.get('/health', async () => {
 // API routes
 await registerRoutes(app);
 
+// WebSocket real-time routes
+await registerWebSocketRoutes(app);
+
 // Initialize tools
 registerAllTools();
 
-// Start Kafka task consumer (non-blocking)
+// Start Kafka task consumer & event broadcaster (non-blocking)
 startTaskConsumer().catch((err) => {
   app.log.warn(`[Kafka] Could not connect task consumer: ${err.message}`);
+});
+
+startEventBroadcaster().catch((err) => {
+  app.log.warn(`[Kafka] Could not connect event broadcaster: ${err.message}`);
 });
 
 // Graceful shutdown

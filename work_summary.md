@@ -163,12 +163,12 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 - [x] Cost tracking per agent run + budget enforcement
 
 ### PHASE 5 — Dashboard & Realtime
-- [ ] Fastify WebSocket hub for event broadcasting
-- [ ] Next.js dashboard: Project overview, goal input
-- [ ] Interactive DAG workflow visualizer
-- [ ] Realtime activity log + agent chat feed
-- [ ] Task list + artifact browser
-- [ ] Human approval action center
+- [x] Fastify WebSocket hub for event broadcasting
+- [x] Next.js dashboard: Project overview, goal input
+- [x] Realtime activity log + agent chat feed
+- [x] Task list + artifact browser
+- [x] Human approval action center
+- [x] WebSocket reconnect with 3s backoff
 
 ### PHASE 6A — 3D Office Core
 - [ ] Three.js + React Three Fiber scene setup
@@ -200,6 +200,7 @@ Digital Marketer, SEO, Content Creator, Sales, Customer Service, Customer Succes
 | 2026-09-25 | Session 3 (Phase 2) | Multi-tier Model Router (Ollama/9Router/Cloud fallback), Tool Gateway with RBAC & audit trail, 5 tool implementations (read/write/git/sandbox/fetch), Agent State Machine lifecycle |
 | 2026-09-25 | Session 4 (Phase 3) | GoalPlanner LLM-driven dynamic DAG planner with fallback, WorkflowEngine with DAG cycle validation & dependency resolution, Kafka TaskConsumer event loop with automatic retries & auto-approval |
 | 2026-09-25 | Session 5 (Phase 4) | ReviewService automated QA/Security review loop, ApprovalService human-in-the-loop approval gateway, MemoryService multi-tier storage, BudgetTracker token cost tracking & project budget enforcement |
+| 2026-09-25 | Session 6 (Phase 5) | Fastify WebSocket hub + Kafka event broadcaster, Next.js dashboard (project sidebar, goal input, task list, approval center, realtime activity feed), WebSocket hook with auto-reconnect |
 
 ---
 
