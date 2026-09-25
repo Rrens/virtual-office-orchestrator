@@ -716,75 +716,108 @@ If sufficient → execute
 
 If insufficient
 ↓
-Escalate model 23. Virtual Office
+Escalate model 23. Virtual Office (3D Realistic Environment)
 
-Virtual office memiliki:
+Virtual office adalah representasi 3D realistis dari kantor perusahaan AI.
+
+Technology Stack:
+- Three.js + React Three Fiber (R3F)
+- ReadyPlayerMe untuk realistic 3D avatars
+- Procedural environment generation
+- WebSocket real-time state synchronization
+
+Virtual office memiliki ruangan:
 
 Reception / Executive
-Product Department
-Design Department
-Engineering Department
-Marketing Department
-Sales Department
-Customer Support
-Operations
-Meeting Room
-Server Room
+Product Studio
+Design Studio
+Engineering Lab
+Marketing Hub
+Sales & Customer Room
+Server Room / DevOps
+Central Meeting Room
+Lobby Dashboard Wall
 
-Contoh layout:
+3D Office Layout:
 
-┌─────────────────────────────────────────────┐
-│ AI COMPANY │
-│ │
-│ ┌──────────┐ ┌──────────┐ │
-│ │ Product │ │ Design │ │
-│ │ │ │ │ │
-│ │ PM │ │ UI/UX │ │
-│ │ Analyst │ │ Research │ │
-│ └──────────┘ └──────────┘ │
-│ │
-│ ┌──────────────────────────────┐ │
-│ │ ENGINEERING │ │
-│ │ Backend Frontend QA DevOps │ │
-│ └──────────────────────────────┘ │
-│ │
-│ ┌──────────┐ ┌──────────┐ │
-│ │ Marketing│ │ Sales │ │
-│ └──────────┘ └──────────┘ │
-│ │
-│ ┌────────────┐ │
-│ │ Meeting │ │
-│ │ Room │ │
-│ └────────────┘ │
-└─────────────────────────────────────────────┘ 24. Virtual Office Agent Behavior
+┌────────────────────────────────────────────────────────────────┐
+│                       AI COMPANY HQ (3D)                       │
+│                                                                │
+│   ┌────────────┐   ┌────────────┐   ┌──────────────────────┐  │
+│   │  Executive │   │  Product   │   │      Engineering     │  │
+│   │   Office   │   │  Studio    │   │        Lab           │  │
+│   │            │   │  PM/UX/BA  │   │  Backend / Frontend  │  │
+│   │ Orchestrator│   │            │   │  QA / Security       │  │
+│   └────────────┘   └────────────┘   └───────────┬──────────┘  │
+│                                                 │              │
+│   ┌────────────┐   ┌────────────┐   ┌───────────▼──────────┐  │
+│   │  Server    │   │  Marketing │   │      Sales &         │  │
+│   │   Room     │   │   Hub      │   │   Customer Support   │  │
+│   │ DevOps/DB  │   │            │   │                      │  │
+│   └────────────┘   └────────────┘   └──────────────────────┘  │
+│                                                                │
+│        ┌─────────────────────────────────────────────┐        │
+│        │           Central Meeting Room              │        │
+│        │      (Review / Demo / Standup Space)       │        │
+│        └─────────────────────────────────────────────┘        │
+│                                                                │
+│   [ Reception / Lobby with Company Status Dashboard Wall ]     │
+└────────────────────────────────────────────────────────────────┘
 
-Agent activity harus mencerminkan backend state.
+3D Environment Features:
+- Realistic office furniture (desks, chairs, monitors, whiteboards)
+- Dynamic lighting (day/night cycle, room lights)
+- Interactive objects (click desk → view task, click monitor → artifact)
+- Environmental details (coffee machine, server racks, projectors)
+- Minimap & floor plan overlay for navigation
+- Camera modes: Free orbit, Follow agent, Department view, Cinematic
 
-Contoh:
+Avatar System (ReadyPlayerMe Integration):
+- Each agent has unique 3D humanoid avatar matching role
+- Customizable per department (PM with tablet, Backend with hoodie, DevOps near servers)
+- Facial expressions sync with agent state
+- Professional attire appropriate to role
 
-Agent = Backend Engineer
-Status = working
-Task = TASK-120
+24. Virtual Office Agent Behavior (3D Animations)
 
-Visual:
+Agent activity harus mencerminkan backend state secara real-time dalam 3D.
 
-Backend Engineer
-↓
-walk to desk
-↓
-working animation
-↓
-task bubble
+Avatar agent dirender menggunakan ReadyPlayerMe GLB model di Three.js scene.
+Semua animasi digerakkan oleh backend event via WebSocket — bukan sebaliknya.
 
-Jika task selesai:
+Event-to-Animation Mapping:
 
-working
-↓
-completed
-↓
-walk to QA
-↓
-handoff
+agent.assigned   → Agent bangkit dari idle, berjalan ke meja/ruangan (navmesh pathfinding)
+agent.thinking   → Duduk, layar monitor berkedip, floating bubble "💡 Thinking..."
+agent.working    → Animasi mengetik / menggambar / membaca sesuai role
+task.handoff     → Agent berjalan ke agent lain, artifact glow effect, serah terima
+task.review      → Agent berjalan ke meeting room, layar besar tampilkan artifact
+approval.requested → Spotlight ke Founder desk, notification bell + pause seluruh terkait
+agent.error      → Animasi frustrated, lampu ruangan berkedip merah
+task.completed   → Confetti micro-particle, agent idle celebrasi, checkmark di task board
+
+Animation States per Agent:
+- idle: duduk santai / berdiri di meja
+- walking: berjalan menggunakan navmesh ke target posisi
+- thinking: head scratch / look at monitor
+- working: typing / drawing / reading (per-role)
+- presenting: standing at whiteboard / projector
+- handoff: walking toward target agent + object pass
+- waiting: tapping foot / looking around
+- error: head-in-hands / frustrated
+- completed: thumbs up / fist pump
+
+Camera Modes:
+- Free Orbit: user kontrol kamera bebas
+- Follow Agent: kamera ikuti agent tertentu
+- Department View: zoom out ke satu departemen
+- Cinematic: auto-pan, dramatik, untuk mode showcase
+
+Performance Guidelines:
+- Max 30 agent avatars rendered simultaneously (LOD system untuk yang jauh)
+- Avatar geometry: ~15k poly (high), ~5k poly (LOD1), billboard (LOD2)
+- Target: 60 FPS desktop, 30 FPS mobile
+- Shadows: baked untuk static objects, realtime hanya untuk avatars
 
 Animation bukan source of truth.
 
@@ -1351,8 +1384,34 @@ PHASE 5
 Dashboard
 ↓
 Realtime Events
-PHASE 6
-Virtual Office 39. MVP Agent Set
+PHASE 6A
+3D Office Core
+↓
+Three.js + React Three Fiber setup
+↓
+Floor plan, rooms, lighting
+↓
+WebSocket state sync
+PHASE 6B
+3D Characters
+↓
+ReadyPlayerMe avatar integration
+↓
+Animation state machine
+↓
+Navmesh pathfinding
+↓
+Handoff & interaction animations
+PHASE 6C
+Realistic Polish
+↓
+Environment props & details
+↓
+Dynamic lighting & shadows
+↓
+Sound FX & ambient audio
+↓
+Mobile / cross-device optimization 39. MVP Agent Set
 
 Jangan langsung deploy 30 agent.
 
@@ -1397,8 +1456,9 @@ Target architecture:
                          └───────┬───────┘
                                  │
                          ┌───────▼───────┐
-                         │   DASHBOARD   │
-                         │ VIRTUAL OFFICE│
+│   DASHBOARD   │
+│ 3D VIRTUAL    │
+│    OFFICE     │
                          └───────┬───────┘
                                  │
                          ┌───────▼───────┐
