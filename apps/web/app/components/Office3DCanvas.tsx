@@ -1,8 +1,9 @@
 'use client';
 
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Text, Html } from '@react-three/drei';
+import { OrbitControls, Text } from '@react-three/drei';
 import { useMemo } from 'react';
+import { ReadyPlayerMeAvatar } from './ReadyPlayerMeAvatar';
 import type { WSEvent } from '../../hooks/useProjectWebSocket';
 
 interface Agent3D {
@@ -98,38 +99,27 @@ export function Office3DCanvas({ events }: Props) {
 
         {/* Agent Avatars & Desks */}
         {agentStates.map((agent) => (
-          <group key={agent.id} position={agent.position}>
+          <group key={agent.id}>
             {/* Desk */}
-            <mesh position={[0, 0.25, 0]}>
+            <mesh position={[agent.position[0], 0.25, agent.position[2]]}>
               <boxGeometry args={[1.2, 0.5, 0.8]} />
               <meshStandardMaterial color={DESK_COLOR} />
             </mesh>
 
             {/* Monitor */}
-            <mesh position={[0, 0.6, -0.2]}>
+            <mesh position={[agent.position[0], 0.6, agent.position[2] - 0.2]}>
               <boxGeometry args={[0.5, 0.3, 0.05]} />
               <meshStandardMaterial color="#0f172a" />
             </mesh>
 
-            {/* Agent Character Model (Representational Mesh) */}
-            <mesh position={[0, 0.8, 0]}>
-              <capsuleGeometry args={[0.2, 0.5, 8, 16]} />
-              <meshStandardMaterial color={agent.color} />
-            </mesh>
-
-            {/* Agent Label & Status Bubble */}
-            <Html position={[0, 1.4, 0]} center distanceFactor={12}>
-              <div className="flex flex-col items-center pointer-events-none">
-                <div className="px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700 text-[10px] font-semibold text-white whitespace-nowrap shadow-lg">
-                  {agent.name}
-                </div>
-                {agent.status !== 'idle' && (
-                  <span className="mt-0.5 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-indigo-500 text-white animate-pulse">
-                    {agent.status}
-                  </span>
-                )}
-              </div>
-            </Html>
+            {/* ReadyPlayerMe Avatar */}
+            <ReadyPlayerMeAvatar
+              role={agent.role}
+              name={agent.name}
+              status={agent.status}
+              color={agent.color}
+              position={agent.position}
+            />
           </group>
         ))}
 
