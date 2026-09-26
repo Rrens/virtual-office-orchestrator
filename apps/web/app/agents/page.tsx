@@ -343,9 +343,9 @@ export default function AgentManagementPage() {
                 onClick={() => handleApplyPreset('balanced')}
                 disabled={batchLoading}
                 className="py-1.5 px-2 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-800/60 text-indigo-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50 text-center"
-                title="Terapkan Qwen 2.5 Coder 32B via 9Router ke semua agent"
+                title="Terapkan 9Router (Specialized Code / Lightweight) ke semua agent"
               >
-                ⚖️ Mode Balanced (32B)
+                ⚖️ Mode Balanced (9Router)
               </button>
               <button
                 onClick={() => handleApplyPreset('max')}

@@ -5,10 +5,15 @@ const MODEL_COSTS_PER_1K: Record<string, { prompt: number; completion: number }>
   'llama3.1:8b': { prompt: 0, completion: 0 },
   'qwen/qwen-2.5-coder-32b-instruct': { prompt: 0.0001, completion: 0.0002 },
   'meta-llama/llama-3.1-70b-instruct': { prompt: 0.0003, completion: 0.0004 },
+  '9Router-1-Primary-Heavy': { prompt: 0.0003, completion: 0.0006 },
+  '9Router-2-High-Performance': { prompt: 0.0002, completion: 0.0005 },
+  '9Router-3-Specialized-Code': { prompt: 0.0001, completion: 0.0002 },
+  '9Router-4-Lightweight-Response': { prompt: 0.00005, completion: 0.0001 },
+  '9Router-5-Free-n-Emergency': { prompt: 0, completion: 0 },
   'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
   'gpt-4o': { prompt: 0.0025, completion: 0.01 },
   tier1_ollama: { prompt: 0, completion: 0 },
-  tier2_9router: { prompt: 0.0002, completion: 0.0004 },
+  tier2_9router: { prompt: 0.00015, completion: 0.0003 },
   tier3_cloud: { prompt: 0.0025, completion: 0.01 },
 };
 

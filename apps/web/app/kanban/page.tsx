@@ -152,13 +152,15 @@ export default function KanbanBoardPage() {
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
       const dept = inferDepartment(t.agentRole, t.assignedAgent?.definition.department?.name);
-      const matchesDept = selectedDept === 'all' || dept === selectedDept;
+      // If filtering by IT & Engineering, also show any tasks currently in QA Review (handled by QA Lead Risko)
+      const isUnderQAReview = t.status === 'REVIEW' && selectedDept === 'IT & Engineering';
+      const matchesDept = selectedDept === 'all' || dept === selectedDept || isUnderQAReview;
       const q = search.toLowerCase();
       const matchesSearch =
         t.title.toLowerCase().includes(q) ||
         t.description.toLowerCase().includes(q) ||
-        t.agentRole.toLowerCase().includes(q) ||
-        (t.assignedAgent?.definition.name ?? '').toLowerCase().includes(q);
+        (t.assignedAgent?.definition.name && t.assignedAgent.definition.name.toLowerCase().includes(q)) ||
+        t.agentRole.toLowerCase().includes(q);
       return matchesDept && matchesSearch;
     });
   }, [tasks, selectedDept, search]);
@@ -385,6 +387,11 @@ export default function KanbanBoardPage() {
                               <span className="text-indigo-400 font-semibold">
                                 {task.assignedAgent?.definition.name || task.agentRole}
                               </span>
+                              {task.status === 'REVIEW' && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold">
+                                  🔍 QA Review by Risko
+                                </span>
+                              )}
                               <span>·</span>
                               <span className="font-mono">task #{task.id.slice(0, 6)}</span>
                             </div>

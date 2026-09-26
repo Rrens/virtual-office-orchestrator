@@ -67,16 +67,16 @@ export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
     if (latest.type?.includes('working') || latest.type === 'task.assigned' || latest.type === 'task.started') {
       b.state = 'working';
       b.targetPos = getHomeDeskByRole(role);
-      b.message = 'Sedang ngerjain task...';
+      b.message = latest.message || 'Sedang ngerjain task...';
     } else if (latest.type?.includes('thinking')) {
       b.state = 'thinking';
       b.targetPos = getHomeDeskByRole(role);
-      b.message = 'Mikir solusi...';
+      b.message = latest.message || 'Mikir solusi...';
     } else if (latest.type?.includes('review') || latest.type === 'approval.requested') {
       b.state = 'walking';
-      b.targetPos = OFFICE_WAYPOINTS.MEETING_ROOM_1;
+      b.targetPos = OFFICE_WAYPOINTS.MEETING_ROUND_1;
       (b as any)._nextState = 'meeting';
-      b.message = 'QA Review session!';
+      b.message = role === 'qa-engineer' ? 'QA Review session 🔍' : 'Menuju Meeting Room (QA Review) 📋';
     } else if (latest.type?.includes('completed') || latest.type === 'approval.approved') {
       b.state = 'success';
       b.targetPos = getHomeDeskByRole(role);

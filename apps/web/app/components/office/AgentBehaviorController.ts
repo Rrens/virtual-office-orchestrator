@@ -4,6 +4,7 @@ export type BehaviorState =
   | 'working'
   | 'typing'
   | 'thinking'
+  | 'reviewing'
   | 'coffee_break'
   | 'gaming_ps5'
   | 'playing_billiard'
@@ -153,6 +154,7 @@ export function resolveTargetForState(
     }
 
     case 'meeting':
+    case 'reviewing':
       return [
         (OFFICE_WAYPOINTS.MEETING_ROUND_1?.[0] ?? -10) + offsetX,
         OFFICE_WAYPOINTS.MEETING_ROUND_1?.[1] ?? 9,
@@ -457,7 +459,8 @@ export function tickBehaviors30(
 
       const atTarget = dist < 0.25;
 
-      if (atTarget && (b.state === 'idle' || b.state === 'working' || b.state === 'typing')) {
+      // STRICT LOCK: Only truly idle agents take break activities. Working, thinking, or reviewing agents NEVER take breaks!
+      if (atTarget && b.state === 'idle') {
         b.idleTimer -= delta;
         if (b.idleTimer <= 0) {
           const { state, chatPartner, message } = pickBreakActivity(role, roles);

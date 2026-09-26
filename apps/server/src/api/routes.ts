@@ -437,7 +437,7 @@ export async function registerRoutes(app: FastifyInstance) {
       chosenModel = 'qwen2.5-coder:7b';
       chosenTier = 'tier1_ollama';
     } else if (preset === 'balanced') {
-      chosenModel = 'qwen-2.5-coder-32b';
+      chosenModel = '9Router-3-Specialized-Code';
       chosenTier = 'tier2_9router';
     } else if (preset === 'max') {
       chosenModel = 'claude-3-5-sonnet';
@@ -480,9 +480,10 @@ export async function registerRoutes(app: FastifyInstance) {
       { id: 'qwen2.5-coder:7b', name: 'Qwen 2.5 Coder 7B (Local Balanced)', tier: 'tier1_ollama', cost: 'Free (Local)' },
       { id: 'llama3.1:8b', name: 'Llama 3.1 8B (Local General)', tier: 'tier1_ollama', cost: 'Free (Local)' },
       { id: 'qwen3.5:4b', name: 'Qwen 3.5 4B (Local General)', tier: 'tier1_ollama', cost: 'Free (Local)' },
-      { id: 'qwen-2.5-coder-32b', name: 'Qwen 2.5 Coder 32B (9Router)', tier: 'tier2_9router', cost: 'Low' },
-      { id: 'deepseek-chat', name: 'DeepSeek Chat (9Router)', tier: 'tier2_9router', cost: 'Low' },
-      { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Cloud / 9Router)', tier: 'tier2_9router', cost: 'Medium' },
+      { id: '9Router-3-Specialized-Code', name: '9Router Specialized Code', tier: 'tier2_9router', cost: 'Low' },
+      { id: '9Router-4-Lightweight-Response', name: '9Router Lightweight Response', tier: 'tier2_9router', cost: 'Low' },
+      { id: '9Router-2-High-Performance', name: '9Router High Performance', tier: 'tier2_9router', cost: 'Medium' },
+      { id: '9Router-1-Primary-Heavy', name: '9Router Primary Heavy', tier: 'tier2_9router', cost: 'Medium' },
       { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (Cloud)', tier: 'tier3_cloud', cost: 'High' },
       { id: 'gpt-4o', name: 'GPT-4o (Cloud)', tier: 'tier3_cloud', cost: 'High' },
     ];

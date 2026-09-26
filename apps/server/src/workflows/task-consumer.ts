@@ -87,6 +87,57 @@ async function scanAndAssignQueuedTasks(): Promise<void> {
       logger.warn('TaskScanner', `Failed to assign task ${task.id}: ${err instanceof Error ? err.message : err}`);
     }
   }
+
+  // Recovery: tasks stuck in ASSIGNED because a previous worker died/restarted before completion
+  const stuckThresholdMs = 2 * 60 * 1000;
+  const stuckAssignedTasks = await prisma.task.findMany({
+    where: {
+      status: 'ASSIGNED',
+      updatedAt: { lt: new Date(Date.now() - stuckThresholdMs) },
+    },
+    include: { workflowExecution: true },
+    take: 20,
+  });
+
+  if (stuckAssignedTasks.length > 0) {
+    logger.info('TaskScanner', `Found ${stuckAssignedTasks.length} zombie ASSIGNED task(s) after restart, resetting to QUEUED`, {
+      tasks: stuckAssignedTasks.map((t) => ({ id: t.id, title: t.title, role: t.agentRole })),
+    });
+  }
+
+  for (const task of stuckAssignedTasks) {
+    try {
+      // Mark any dangling running agentRun as failed
+      await prisma.agentRun.updateMany({
+        where: {
+          taskId: task.id,
+          status: 'running',
+        },
+        data: {
+          status: 'failed',
+          errorMessage: 'Worker restarted before completion — task recovered by scanner',
+        },
+      });
+
+      // Free the agent previously bound to this task
+      if (task.assignedAgentId) {
+        await prisma.agentInstance.updateMany({
+          where: { id: task.assignedAgentId, currentTaskId: task.id },
+          data: { status: 'idle', currentTaskId: null },
+        });
+      }
+
+      // Reset task to queued
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { status: 'QUEUED', assignedAgentId: null },
+      });
+
+      await handleTaskQueued({ taskId: task.id });
+    } catch (err) {
+      logger.warn('TaskScanner', `Failed to recover stuck ASSIGNED task ${task.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
 }
 
 async function handleWorkflowStarted(event: any): Promise<void> {
@@ -248,7 +299,7 @@ async function executeTask(task: any, agent: any): Promise<void> {
     selectedTier === 'tier1_ollama'
       ? (task.agentRole?.includes('engineer') ? 'qwen2.5-coder:3b' : 'qwen3.5:4b')
       : selectedTier === 'tier2_9router'
-      ? 'qwen-2.5-coder-32b (9Router)'
+      ? (task.agentRole?.includes('engineer') || task.agentRole?.includes('devops') ? '9Router-3-Specialized-Code' : '9Router-4-Lightweight-Response')
       : 'gpt-4o-mini (Cloud)'
   );
 
