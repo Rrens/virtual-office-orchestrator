@@ -64,6 +64,8 @@ export function AgentCharacter({
   const rightLegRef = useRef<THREE.Group>(null);
   const timeRef = useRef(Math.random() * 10);
   const prevPos = useRef<[number, number, number]>([...currentPos]);
+  const targetRotY = useRef(Math.PI); // default facing desk (-Z)
+  const smoothPos = useRef(new THREE.Vector3(...currentPos));
 
   const deptTheme = DEPT_THEMES[department] ?? DEPT_THEMES.operations;
   const shirtColor = deptTheme.color;
@@ -84,25 +86,47 @@ export function AgentCharacter({
     const t = timeRef.current;
     if (!groupRef.current) return;
 
-    groupRef.current.position.set(currentPos[0], currentPos[1], currentPos[2]);
+    // Smooth 60 FPS position interpolation
+    smoothPos.current.lerp(new THREE.Vector3(currentPos[0], currentPos[1], currentPos[2]), 0.18);
+    groupRef.current.position.copy(smoothPos.current);
 
+    const renderPos = smoothPos.current;
+
+    // Compute motion-based look angle
     const dx = currentPos[0] - prevPos.current[0];
     const dz = currentPos[2] - prevPos.current[2];
-    if (Math.sqrt(dx * dx + dz * dz) > 0.001) {
+    const isMoving = Math.sqrt(dx * dx + dz * dz) > 0.001;
+
+    if (isMoving) {
+      // Walking agents face direction of movement
       const angle = Math.atan2(dx, dz);
-      groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, angle, 0.12);
+      targetRotY.current = angle;
+    } else if (
+      state === 'working' ||
+      state === 'typing' ||
+      state === 'thinking' ||
+      state === 'idle' ||
+      state === 'success' ||
+      state === 'error'
+    ) {
+      // At desk: face monitors (toward -Z)
+      targetRotY.current = Math.PI;
     } else if (facingTarget) {
       const fx = facingTarget[0] - currentPos[0];
       const fz = facingTarget[2] - currentPos[2];
       if (Math.sqrt(fx * fx + fz * fz) > 0.1) {
-        const angle = Math.atan2(fx, fz);
-        groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, angle, 0.08);
+        targetRotY.current = Math.atan2(fx, fz);
       }
     }
+
+    groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotY.current, 0.12);
     prevPos.current = [...currentPos];
 
     if (LOD === 'dot') {
-      groupRef.current.position.y = state === 'walking' ? currentPos[1] + Math.abs(Math.sin(t * 8)) * 0.06 : currentPos[1] + Math.sin(t * 1.5) * 0.01;
+      groupRef.current.position.y =
+        state === 'walking'
+          ? renderPos.y + Math.abs(Math.sin(t * 8)) * 0.06
+          : renderPos.y + Math.sin(t * 1.5) * 0.01;
       return;
     }
 
@@ -113,13 +137,13 @@ export function AgentCharacter({
     if (rightLegRef.current) rightLegRef.current.rotation.set(0, 0, 0);
 
     if (state === 'walking') {
-      groupRef.current.position.y = currentPos[1] + Math.abs(Math.sin(t * 7)) * 0.05;
+      groupRef.current.position.y = renderPos.y + Math.abs(Math.sin(t * 7)) * 0.05;
       if (leftArmRef.current) leftArmRef.current.rotation.x = Math.sin(t * 7) * 0.55;
       if (rightArmRef.current) rightArmRef.current.rotation.x = -Math.sin(t * 7) * 0.55;
       if (leftLegRef.current) leftLegRef.current.rotation.x = -Math.sin(t * 7) * 0.45;
       if (rightLegRef.current) rightLegRef.current.rotation.x = Math.sin(t * 7) * 0.45;
     } else if (state === 'typing' || state === 'working') {
-      groupRef.current.position.y = currentPos[1] + Math.sin(t * 9) * 0.008;
+      groupRef.current.position.y = renderPos.y + Math.sin(t * 9) * 0.008;
       if (leftArmRef.current) leftArmRef.current.rotation.x = -1.25 + Math.sin(t * 14) * 0.18;
       if (rightArmRef.current) rightArmRef.current.rotation.x = -1.25 + Math.cos(t * 14) * 0.18;
       if (headRef.current) headRef.current.rotation.x = 0.18;
@@ -148,7 +172,7 @@ export function AgentCharacter({
       if (headRef.current) headRef.current.rotation.x = 0.15;
     } else if (state === 'playing_billiard') {
       groupRef.current.rotation.y += Math.PI;
-      groupRef.current.position.y = currentPos[1] - 0.3;
+      groupRef.current.position.y = renderPos.y - 0.3;
       if (rightArmRef.current) rightArmRef.current.rotation.x = -1.3 + Math.sin(t * 3) * 0.3;
       if (headRef.current) headRef.current.rotation.x = 0.2;
     } else if (state === 'playing_guitar') {
@@ -162,7 +186,7 @@ export function AgentCharacter({
       }
       if (headRef.current) headRef.current.rotation.z = Math.sin(t * 2) * 0.08;
     } else if (state === 'playing_piano') {
-      groupRef.current.position.y = currentPos[1] - 0.4;
+      groupRef.current.position.y = renderPos.y - 0.4;
       if (leftArmRef.current) leftArmRef.current.rotation.x = -0.6 + Math.sin(t * 6) * 0.1;
       if (rightArmRef.current) rightArmRef.current.rotation.x = -0.6 + Math.cos(t * 6) * 0.1;
     } else if (state === 'playing_drums') {
@@ -173,26 +197,30 @@ export function AgentCharacter({
       if (headRef.current) headRef.current.rotation.y = Math.sin(t * 2.5) * 0.15;
       if (leftArmRef.current) leftArmRef.current.rotation.z = Math.sin(t * 2) * 0.2;
     } else if (state === 'pacing') {
-      groupRef.current.position.y = currentPos[1] + Math.abs(Math.sin(t * 4)) * 0.03;
+      groupRef.current.position.y = renderPos.y + Math.abs(Math.sin(t * 4)) * 0.03;
       if (leftArmRef.current) leftArmRef.current.rotation.x = Math.sin(t * 4) * 0.35;
       if (rightArmRef.current) rightArmRef.current.rotation.x = -Math.sin(t * 4) * 0.35;
     } else if (state === 'meeting') {
       if (headRef.current) headRef.current.rotation.y = Math.sin(t * 1.5) * 0.12;
       if (leftArmRef.current) leftArmRef.current.rotation.z = 0.15;
     } else if (state === 'error') {
-      groupRef.current.position.x = currentPos[0] + Math.sin(t * 32) * 0.015;
+      groupRef.current.position.x = renderPos.x + Math.sin(t * 32) * 0.015;
       if (headRef.current) headRef.current.rotation.z = Math.sin(t * 10) * 0.12;
     } else if (state === 'success') {
-      groupRef.current.position.y = currentPos[1] + Math.abs(Math.sin(t * 5)) * 0.07;
+      groupRef.current.position.y = renderPos.y + Math.abs(Math.sin(t * 5)) * 0.07;
       if (leftArmRef.current) leftArmRef.current.rotation.z = Math.PI - 0.4;
       if (rightArmRef.current) rightArmRef.current.rotation.z = -(Math.PI - 0.4);
     } else {
-      groupRef.current.position.y = currentPos[1] + Math.sin(t * 1.2) * 0.007;
+      groupRef.current.position.y = renderPos.y + Math.sin(t * 1.2) * 0.007;
     }
   });
 
   const displayMsg = message ?? STATE_MESSAGES[state] ?? '';
   const isWarn = state === 'error';
+  const nameTagText = `${name} · ${title}`;
+  const pillWidth = Math.max(0.9, nameTagText.length * 0.095);
+  const hasMsg = Boolean(displayMsg);
+  const cardHeight = hasMsg ? 0.54 : 0.32;
 
   // LOD DOT
   if (LOD === 'dot') {
@@ -200,7 +228,11 @@ export function AgentCharacter({
       <group ref={groupRef} position={currentPos}>
         <mesh>
           <sphereGeometry args={[0.18, 12, 12]} />
-          <meshStandardMaterial color={shirtColor} emissive={shirtColor} emissiveIntensity={state === 'working' ? 0.4 : 0} />
+          <meshStandardMaterial
+            color={shirtColor}
+            emissive={shirtColor}
+            emissiveIntensity={state === 'working' ? 0.4 : 0}
+          />
         </mesh>
         {state === 'walking' && (
           <>
@@ -226,9 +258,7 @@ export function AgentCharacter({
         <mesh position={[0, 1.2, 0]} material={skin}>
           <sphereGeometry args={[0.2, 12, 12]} />
         </mesh>
-        {state === 'working' && (
-          <pointLight color={shirtColor} intensity={0.5} distance={1.5} />
-        )}
+        {state === 'working' && <pointLight color={shirtColor} intensity={0.5} distance={1.5} />}
       </group>
     );
   }
@@ -268,41 +298,42 @@ export function AgentCharacter({
         <mesh position={[0.07, 0.02, 0.17]} material={dark}><sphereGeometry args={[0.025, 8, 8]} /></mesh>
       </group>
 
-      {/* Sleek Floating Pill Badge + Speech Bubble */}
-      <Billboard position={[0, 2.0, 0]} follow lockX={false} lockY={false} lockZ={false}>
-        {/* Name Tag Pill */}
-        <mesh position={[0, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-          <capsuleGeometry args={[0.13, Math.max(0.5, (name.length + title.length) * 0.042), 4, 12]} />
+      {/* Unified Sleek Dark Glassmorphism Badge (Standard Depth Test enabled so it never bleeds through floors!) */}
+      <Billboard position={[0, 2.05, 0]} follow>
+        {/* Background Card */}
+        <mesh position={[0, hasMsg ? -0.08 : 0, -0.005]}>
+          <planeGeometry args={[pillWidth + 0.18, cardHeight]} />
+          <meshBasicMaterial color="#0b1324" transparent opacity={0.88} side={THREE.DoubleSide} />
+        </mesh>
+        {/* Department Accent Line at Top of Card */}
+        <mesh position={[0, hasMsg ? -0.08 + cardHeight / 2 - 0.015 : cardHeight / 2 - 0.015, 0.001]}>
+          <planeGeometry args={[pillWidth + 0.14, 0.03]} />
           <meshBasicMaterial color={shirtColor} side={THREE.DoubleSide} />
         </mesh>
+
+        {/* Line 1: Agent Name & Role */}
         <Text
-          position={[0, 0, 0.02]}
-          fontSize={0.12}
+          position={[0, hasMsg ? 0.06 : 0, 0.01]}
+          fontSize={0.11}
           color="#ffffff"
           anchorX="center"
           anchorY="middle"
           fontWeight="bold"
         >
-          {name} · {title}
+          {nameTagText}
         </Text>
 
-        {displayMsg && (
-          <group position={[0, 0.34, 0]}>
-            <mesh rotation={[0, 0, Math.PI / 2]}>
-              <capsuleGeometry args={[0.11, Math.max(0.6, displayMsg.length * 0.042), 4, 12]} />
-              <meshBasicMaterial color={isWarn ? '#fef3c7' : '#ffffff'} side={THREE.DoubleSide} />
-            </mesh>
-            <Text
-              position={[0, 0, 0.02]}
-              fontSize={0.095}
-              color={isWarn ? '#92400e' : '#0f172a'}
-              anchorX="center"
-              anchorY="middle"
-              fontWeight="bold"
-            >
-              {displayMsg}
-            </Text>
-          </group>
+        {/* Line 2: Activity Status Message (Soft Cyan or Warning Amber, inside the same sleek card!) */}
+        {hasMsg && (
+          <Text
+            position={[0, -0.16, 0.01]}
+            fontSize={0.085}
+            color={isWarn ? '#f59e0b' : '#38bdf8'}
+            anchorX="center"
+            anchorY="middle"
+          >
+            {displayMsg}
+          </Text>
         )}
       </Billboard>
     </group>

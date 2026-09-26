@@ -30,7 +30,7 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
       {/* 🚁 1. LANDING SKIDS (Pipa Penyangga Pendaratan)                */}
       {/* ============================================================== */}
       {/* Left Skid */}
-      <mesh position={[-1.3, 0.15, 0]} castShadow>
+      <mesh position={[-1.3, 0.15, 0]}>
         <boxGeometry args={[0.12, 0.1, 4.8]} />
         <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.2} />
       </mesh>
@@ -50,7 +50,7 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
       </mesh>
 
       {/* Right Skid */}
-      <mesh position={[1.3, 0.15, 0]} castShadow>
+      <mesh position={[1.3, 0.15, 0]}>
         <boxGeometry args={[0.12, 0.1, 4.8]} />
         <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.2} />
       </mesh>
@@ -74,13 +74,13 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
       {/* ============================================================== */}
       <group position={[0, 1.45, 0.2]}>
         {/* Main Cabin Core */}
-        <mesh castShadow receiveShadow>
+        <mesh>
           <boxGeometry args={[2.2, 1.6, 3.4]} />
           <meshStandardMaterial color="#090d16" metalness={0.65} roughness={0.25} />
         </mesh>
 
         {/* Aerodynamic Rounded Nose */}
-        <mesh position={[0, -0.15, 1.8]} rotation={[0.25, 0, 0]} castShadow>
+        <mesh position={[0, -0.15, 1.8]} rotation={[0.25, 0, 0]}>
           <boxGeometry args={[2.0, 1.2, 0.9]} />
           <meshStandardMaterial color="#090d16" metalness={0.65} roughness={0.25} />
         </mesh>
@@ -108,7 +108,7 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
         </mesh>
 
         {/* Engine Doghouse Cowling Top */}
-        <mesh position={[0, 0.95, -0.3]} castShadow>
+        <mesh position={[0, 0.95, -0.3]}>
           <boxGeometry args={[1.4, 0.55, 2.2]} />
           <meshStandardMaterial color="#1e293b" metalness={0.7} roughness={0.3} />
         </mesh>
@@ -127,7 +127,7 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
       {/* 🚁 3. TAIL BOOM, VERTICAL FIN & HORIZONTAL STABILIZER          */}
       {/* ============================================================== */}
       {/* Tapered Boom */}
-      <mesh position={[0, 1.6, -3.2]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+      <mesh position={[0, 1.6, -3.2]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.3, 0.55, 3.6, 12]} />
         <meshStandardMaterial color="#090d16" metalness={0.65} roughness={0.25} />
       </mesh>
@@ -138,13 +138,13 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
       </mesh>
 
       {/* Vertical Tail Fin */}
-      <mesh position={[0, 2.45, -5.0]} rotation={[-0.3, 0, 0]} castShadow>
+      <mesh position={[0, 2.45, -5.0]} rotation={[-0.3, 0, 0]}>
         <boxGeometry args={[0.15, 1.8, 0.8]} />
         <meshStandardMaterial color="#090d16" metalness={0.65} roughness={0.25} />
       </mesh>
 
       {/* Horizontal Stabilizer Wings */}
-      <mesh position={[0, 2.0, -4.6]} castShadow>
+      <mesh position={[0, 2.0, -4.6]}>
         <boxGeometry args={[2.0, 0.08, 0.5]} />
         <meshStandardMaterial color="#1e293b" metalness={0.7} roughness={0.3} />
       </mesh>
@@ -170,7 +170,7 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
           {/* 4 Carbon Fiber Aerodynamic Blades */}
           {[0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2].map((angle, i) => (
             <group key={`blade-${i}`} rotation={[0, angle, 0]} position={[0, 0.35, 0]}>
-              <mesh position={[0, 0, 3.2]} rotation={[0.08, 0, 0]} castShadow>
+              <mesh position={[0, 0, 3.2]} rotation={[0.08, 0, 0]}>
                 <boxGeometry args={[0.26, 0.03, 5.8]} />
                 <meshStandardMaterial color="#1e293b" metalness={0.8} roughness={0.3} />
               </mesh>

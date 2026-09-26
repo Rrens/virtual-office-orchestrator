@@ -33,21 +33,44 @@ export interface AgentBehavior {
   idleTimer: number;
 }
 
-const IDLE_TIMEOUT_MIN = 12;
-const IDLE_TIMEOUT_MAX = 28;
+export interface GlobalElevatorState {
+  currentY: number;
+  targetY: number;
+  doorOpenProgress: number; // 0 (closed) to 1 (fully open)
+  state:
+    | 'idle'
+    | 'calling'
+    | 'opening_for_entry'
+    | 'ceo_entering'
+    | 'closing_for_transit'
+    | 'transit'
+    | 'opening_for_exit'
+    | 'ceo_exiting'
+    | 'closing_after_exit';
+  timer: number;
+}
+
+export const globalElevatorState: GlobalElevatorState = {
+  currentY: FLOOR_HEIGHTS.L3_PENTHOUSE, // Starts on CEO Penthouse floor
+  targetY: FLOOR_HEIGHTS.L3_PENTHOUSE,
+  doorOpenProgress: 0,
+  state: 'idle',
+  timer: 0,
+};
+
+const IDLE_TIMEOUT_MIN = 45;
+const IDLE_TIMEOUT_MAX = 95;
 
 const BREAK_ACTIVITIES: BehaviorState[] = [
+  'pacing',
+  'chatting',
   'coffee_break',
   'gaming_ps5',
   'playing_billiard',
-  'playing_guitar',
-  'playing_piano',
-  'playing_drums',
-  'chatting',
-  'pacing',
 ];
 
-const BREAK_WEIGHTS = [0.25, 0.15, 0.15, 0.08, 0.08, 0.05, 0.12, 0.12];
+// Weighted distribution: 40% pacing at desk, 30% chatting with peer, 18% coffee break, 6% PS5, 6% Billiard
+const BREAK_WEIGHTS = [0.4, 0.3, 0.18, 0.06, 0.06];
 
 function weightedRandom(weights: number[]): number {
   const total = weights.reduce((a, b) => a + b, 0);
@@ -151,26 +174,31 @@ export function pickBreakActivity(role: string, allRoles: string[]): {
 
   switch (state) {
     case 'coffee_break':
-      return { state, message: 'Naik lift ngopi ke L2 Pantry ☕' };
+      return { state, message: 'Ngopi ke Cafe Pantry ☕' };
 
     case 'gaming_ps5':
-      return { state, message: 'Naik lift main PS5 di L6 Lounge 🎮' };
+      return { state, message: 'Main PS5 di Lounge 🎮' };
 
     case 'playing_billiard':
-      return { state, message: 'Main Billiard di L6 Sky Lounge 🎱' };
+      return { state, message: 'Main Billiard di Sky Lounge 🎱' };
 
     case 'playing_guitar':
-      return { state, message: 'Jamming gitar di Music Studio L6 🎸' };
+      return { state, message: 'Jamming gitar di Music Studio 🎸' };
 
     case 'playing_piano':
-      return { state, message: 'Main piano di Music Studio L6 🎹' };
+      return { state, message: 'Main piano di Music Studio 🎹' };
 
     case 'playing_drums':
-      return { state, message: 'Main drum di Music Studio L6 🥁' };
+      return { state, message: 'Main drum di Music Studio 🥁' };
 
     case 'chatting': {
-      const peers = allRoles.filter((r) => r !== role && r !== 'security-guard' && r !== 'receptionist');
-      const partner = peers[Math.floor(Math.random() * peers.length)];
+      const myHome = getHomeDeskByRole(role);
+      const peers = allRoles.filter((r) => {
+        if (r === role || r === 'security-guard' || r === 'receptionist') return false;
+        const pHome = getHomeDeskByRole(r);
+        return Math.abs(pHome[1] - myHome[1]) < 0.5; // same floor
+      });
+      const partner = peers.length > 0 ? peers[Math.floor(Math.random() * peers.length)] : undefined;
       return { state, chatPartner: partner, message: 'Diskusi dengan rekan tim 💬' };
     }
 
@@ -205,16 +233,16 @@ export function tickBehaviors30(
   behaviors: Record<string, AgentBehavior>,
   delta: number
 ): Record<string, AgentBehavior> {
+  const next: Record<string, AgentBehavior> = {};
   const roles = Object.keys(behaviors);
-  const next = { ...behaviors };
 
   roles.forEach((role) => {
-    const b = { ...next[role] };
+    const b = { ...behaviors[role] };
 
-    // Stationary decorative staff
+    // Static lobby staff
     if (role === 'security-guard') {
       b.state = 'idle';
-      b.message = 'Menjaga Keamanan Lobby 🛡️';
+      b.message = 'Menjaga Keamanan Gedung 🛡️';
       b.targetPos = OFFICE_WAYPOINTS.SECURITY_POST;
       b.currentPos = OFFICE_WAYPOINTS.SECURITY_POST;
       next[role] = b;
@@ -230,7 +258,7 @@ export function tickBehaviors30(
       return;
     }
 
-    // Defensive fallback: guarantee valid coordinates and prevent any runtime TypeError
+    // Defensive fallback
     if (!b.targetPos || !Array.isArray(b.targetPos) || typeof b.targetPos[1] !== 'number') {
       b.targetPos = getHomeDeskByRole(role);
     }
@@ -241,40 +269,177 @@ export function tickBehaviors30(
     const currentY = b.currentPos[1];
     const targetY = b.targetPos[1];
     const isDifferentFloor = Math.abs(currentY - targetY) > 0.5;
-
-    // Movement speed: deliberately slower for comfortable name readability
     const speed = 1.6;
 
-    if (isDifferentFloor) {
-      // Use a tiny per-agent deterministic queue offset to avoid name tag overlap in front of elevator
-      const roleOffsetMap: Record<string, number> = {};
-      roles.forEach((r, i) => (roleOffsetMap[r] = (i % 5 - 2) * 1.2));
-      const elevatorBaseX = 22;
-      const targetQueueX = elevatorBaseX + roleOffsetMap[role];
+    // =========================================================================
+    // 🛗 SPECIAL LOGIC: CEO RENDY USES EXCLUSIVE VIP GLASS ELEVATOR
+    // =========================================================================
+    if (role === 'orchestrator' && isDifferentFloor) {
+      const currentFloorY = Math.round(currentY / 9) * 9;
+      const targetFloorY = Math.round(targetY / 9) * 9;
 
-      // 1. Move horizontally to the elevator door queue position [targetQueueX, currentY, 0]
-      const toElevatorDx = targetQueueX - b.currentPos[0];
-      const toElevatorDz = 0 - b.currentPos[2];
-      const distToElevator = Math.sqrt(toElevatorDx * toElevatorDx + toElevatorDz * toElevatorDz);
+      const elevatorWaitingX = 17.5;
+      const elevatorCabinX = 20.0;
+      const elevatorZ = 0;
 
-      if (distToElevator > 0.3) {
-        const step = Math.min(speed * delta, distToElevator);
-        b.currentPos = [
-          b.currentPos[0] + (toElevatorDx / distToElevator) * step,
-          currentY,
-          b.currentPos[2] + (toElevatorDz / distToElevator) * step,
-        ];
-        b.message = 'Menuju Lift Kaca 🛗';
-      } else {
-        // 2. Inside elevator: ride vertically to target floor
-        const dy = targetY - currentY;
-        const elevatorSpeed = 4.5;
-        const stepY = Math.sign(dy) * Math.min(elevatorSpeed * delta, Math.abs(dy));
-        b.currentPos = [targetQueueX, currentY + stepY, 0];
-        b.message = `Naik Lift ke Lantai ${Math.round(targetY / 8)} 🛗`;
+      switch (globalElevatorState.state) {
+        case 'idle': {
+          const dxW = elevatorWaitingX - b.currentPos[0];
+          const dzW = elevatorZ - b.currentPos[2];
+          const distW = Math.sqrt(dxW * dxW + dzW * dzW);
+
+          if (distW > 0.3) {
+            const step = Math.min(speed * delta, distW);
+            b.currentPos = [
+              b.currentPos[0] + (dxW / distW) * step,
+              currentFloorY,
+              b.currentPos[2] + (dzW / distW) * step,
+            ];
+            b.message = 'Menuju Lift VIP 🛗';
+          } else {
+            b.message = 'Memanggil Lift VIP 🛗';
+            globalElevatorState.targetY = currentFloorY;
+            if (Math.abs(globalElevatorState.currentY - currentFloorY) < 0.1) {
+              globalElevatorState.state = 'opening_for_entry';
+            } else {
+              globalElevatorState.state = 'calling';
+            }
+          }
+          break;
+        }
+
+        case 'calling': {
+          b.message = 'Menunggu Lift VIP Datang 🛗';
+          const dyC = globalElevatorState.targetY - globalElevatorState.currentY;
+          if (Math.abs(dyC) > 0.15) {
+            globalElevatorState.currentY += Math.sign(dyC) * Math.min(6 * delta, Math.abs(dyC));
+          } else {
+            globalElevatorState.currentY = globalElevatorState.targetY;
+            globalElevatorState.state = 'opening_for_entry';
+          }
+          break;
+        }
+
+        case 'opening_for_entry': {
+          b.message = 'Pintu Lift VIP Terbuka 🛗';
+          globalElevatorState.doorOpenProgress = Math.min(1, globalElevatorState.doorOpenProgress + delta * 2.5);
+          if (globalElevatorState.doorOpenProgress >= 0.98) {
+            globalElevatorState.state = 'ceo_entering';
+          }
+          break;
+        }
+
+        case 'ceo_entering': {
+          b.message = 'Masuk ke Lift VIP 🛗';
+          const dxIn = elevatorCabinX - b.currentPos[0];
+          if (Math.abs(dxIn) > 0.1) {
+            b.currentPos[0] += Math.sign(dxIn) * Math.min(speed * delta, Math.abs(dxIn));
+          } else {
+            b.currentPos = [elevatorCabinX, currentFloorY, elevatorZ];
+            globalElevatorState.state = 'closing_for_transit';
+          }
+          break;
+        }
+
+        case 'closing_for_transit': {
+          b.message = 'Pintu Lift VIP Tertutup 🛗';
+          globalElevatorState.doorOpenProgress = Math.max(0, globalElevatorState.doorOpenProgress - delta * 2.5);
+          if (globalElevatorState.doorOpenProgress <= 0.02) {
+            globalElevatorState.targetY = targetFloorY;
+            globalElevatorState.state = 'transit';
+          }
+          break;
+        }
+
+        case 'transit': {
+          b.message = `Meluncur ke Lantai ${Math.round(targetFloorY / 9) + 1} 🛗`;
+          const dyT = globalElevatorState.targetY - globalElevatorState.currentY;
+          if (Math.abs(dyT) > 0.15) {
+            globalElevatorState.currentY += Math.sign(dyT) * Math.min(5.5 * delta, Math.abs(dyT));
+            b.currentPos = [elevatorCabinX, globalElevatorState.currentY, elevatorZ];
+          } else {
+            globalElevatorState.currentY = globalElevatorState.targetY;
+            b.currentPos = [elevatorCabinX, globalElevatorState.targetY, elevatorZ];
+            globalElevatorState.state = 'opening_for_exit';
+          }
+          break;
+        }
+
+        case 'opening_for_exit': {
+          b.message = 'Pintu Lift VIP Terbuka 🛗';
+          globalElevatorState.doorOpenProgress = Math.min(1, globalElevatorState.doorOpenProgress + delta * 2.5);
+          if (globalElevatorState.doorOpenProgress >= 0.98) {
+            globalElevatorState.state = 'ceo_exiting';
+          }
+          break;
+        }
+
+        case 'ceo_exiting': {
+          b.message = 'Keluar dari Lift VIP 🚶';
+          const dxOut = elevatorWaitingX - b.currentPos[0];
+          if (Math.abs(dxOut) > 0.1) {
+            b.currentPos[0] += Math.sign(dxOut) * Math.min(speed * delta, Math.abs(dxOut));
+          } else {
+            b.currentPos = [elevatorWaitingX, targetFloorY, elevatorZ];
+            globalElevatorState.state = 'closing_after_exit';
+          }
+          break;
+        }
+
+        case 'closing_after_exit': {
+          globalElevatorState.doorOpenProgress = Math.max(0, globalElevatorState.doorOpenProgress - delta * 2.5);
+          if (globalElevatorState.doorOpenProgress <= 0.02) {
+            globalElevatorState.state = 'idle';
+          }
+          break;
+        }
       }
+
+    // =========================================================================
+    // 🪜 ALL OTHER 29 NON-CEO AGENTS USE ARCHITECTURAL STAIRS (x = -20)
+    // =========================================================================
+    } else if (isDifferentFloor) {
+      const currentFloorY = Math.round(currentY / 9) * 9;
+      const targetFloorY = Math.round(targetY / 9) * 9;
+      const goingUp = targetFloorY > currentFloorY;
+
+      // Stairs run along z from -4.1 to +4.1 on the left wing (x = -20)
+      const stairX = -20;
+      const stairEntryZ = goingUp ? -4.1 : 4.1;
+      const stairExitZ = goingUp ? 4.1 : -4.1;
+
+      const dxS = stairX - b.currentPos[0];
+      const dzS = stairEntryZ - b.currentPos[2];
+      const distToStairEntry = Math.sqrt(dxS * dxS + dzS * dzS);
+
+      if (distToStairEntry > 0.4 && Math.abs(currentY - currentFloorY) < 0.2) {
+        // 1. Walk towards stairs entrance on current floor
+        const step = Math.min(speed * delta, distToStairEntry);
+        b.currentPos = [
+          b.currentPos[0] + (dxS / distToStairEntry) * step,
+          currentFloorY,
+          b.currentPos[2] + (dzS / distToStairEntry) * step,
+        ];
+        b.message = 'Menuju Tangga 🪜';
+      } else {
+        // 2. Traversal on the stairs with continuous diagonal ascent / descent
+        b.message = goingUp ? 'Naik Tangga 🪜' : 'Turun Tangga 🪜';
+        const stairDz = stairExitZ - b.currentPos[2];
+
+        if (Math.abs(stairDz) > 0.25) {
+          const stepZ = Math.sign(stairDz) * Math.min(speed * 0.9 * delta, Math.abs(stairDz));
+          const newZ = b.currentPos[2] + stepZ;
+          const progress = Math.min(1, Math.max(0, (newZ - stairEntryZ) / (stairExitZ - stairEntryZ)));
+          const newY = currentFloorY + progress * (targetFloorY - currentFloorY);
+          b.currentPos = [stairX, newY, newZ];
+        } else {
+          // Arrived on destination floor landing
+          b.currentPos = [stairX + 2, targetFloorY, stairExitZ];
+        }
+      }
+
     } else {
-      // Same floor: regular horizontal walking
+      // Regular horizontal walking on the same floor
       const dx = b.targetPos[0] - b.currentPos[0];
       const dz = b.targetPos[2] - b.currentPos[2];
       const dist = Math.sqrt(dx * dx + dz * dz);
@@ -318,11 +483,11 @@ export function tickBehaviors30(
             : 6000 + Math.random() * 4000;
 
         setTimeout(() => {
-          if (next[role]) {
-            next[role].state = 'walking';
-            next[role].targetPos = getHomeDeskByRole(role);
-            (next[role] as any)._nextState = 'idle';
-            next[role].message = '';
+          if (behaviors[role]) {
+            behaviors[role].state = 'walking';
+            behaviors[role].message = 'Kembali ke Meja Kerja 💻';
+            behaviors[role].targetPos = getHomeDeskByRole(role);
+            (behaviors[role] as any)._nextState = 'working';
           }
         }, stayDuration);
       }

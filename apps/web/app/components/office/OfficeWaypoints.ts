@@ -20,8 +20,8 @@ export const AGENT_REGISTRY_30: Array<{
   // =========================================================================
   // 🏢 FLOOR 1 (Ground, y = 0): GRAND LOBBY, SALES, CUSTOMER SUCCESS & PANTRY
   // =========================================================================
-  { role: 'security-guard',        name: 'Pak Joko', title: 'Satpam',     dept: 'security',    pos: [10, FLOOR_HEIGHTS.L1_GROUND, 12] },
-  { role: 'receptionist',          name: 'Siti',     title: 'Resepsionis',dept: 'operations',  pos: [0, FLOOR_HEIGHTS.L1_GROUND, 10] },
+  { role: 'security-guard',        name: 'Pak Joko', title: 'Satpam',     dept: 'security',    pos: [5.5, FLOOR_HEIGHTS.L1_GROUND, 15.5] },
+  { role: 'receptionist',          name: 'Siti',     title: 'Resepsionis',dept: 'operations',  pos: [0, FLOOR_HEIGHTS.L1_GROUND, 9] },
 
   // Sales & CS Team (Left Wing)
   { role: 'sales-representative',  name: 'Hendra',   title: 'Sales',       dept: 'sales',       pos: [-16, FLOOR_HEIGHTS.L1_GROUND, -4] },
@@ -49,11 +49,11 @@ export const AGENT_REGISTRY_30: Array<{
   { role: 'penetration-tester',    name: 'Kresna',   title: 'Pentest',     dept: 'engineering', pos: [-4, FLOOR_HEIGHTS.L2_STUDIO, -2] },
 
   // DevOps, AI & Data Team (Back Right Cluster near Server Racks)
-  { role: 'devops',                name: 'Fajar',    title: 'DevOps',      dept: 'engineering', pos: [6, FLOOR_HEIGHTS.L2_STUDIO, -10] },
-  { role: 'performance-engineer',  name: 'Yogi',     title: 'Performa',    dept: 'engineering', pos: [12, FLOOR_HEIGHTS.L2_STUDIO, -10] },
-  { role: 'ai-engineer',           name: 'Hana',     title: 'AI Eng',      dept: 'engineering', pos: [18, FLOOR_HEIGHTS.L2_STUDIO, -10] },
-  { role: 'data-engineer',         name: 'Vino',     title: 'Data Eng',    dept: 'data',        pos: [12, FLOOR_HEIGHTS.L2_STUDIO, -2] },
-  { role: 'data-analyst',          name: 'Sinta',    title: 'Analis',      dept: 'data',        pos: [18, FLOOR_HEIGHTS.L2_STUDIO, -2] },
+  { role: 'devops',                name: 'Fajar',    title: 'DevOps',      dept: 'engineering', pos: [4, FLOOR_HEIGHTS.L2_STUDIO, -10] },
+  { role: 'performance-engineer',  name: 'Yogi',     title: 'Performa',    dept: 'engineering', pos: [10, FLOOR_HEIGHTS.L2_STUDIO, -10] },
+  { role: 'ai-engineer',           name: 'Hana',     title: 'AI Eng',      dept: 'engineering', pos: [16, FLOOR_HEIGHTS.L2_STUDIO, -10] },
+  { role: 'data-engineer',         name: 'Vino',     title: 'Data Eng',    dept: 'data',        pos: [10, FLOOR_HEIGHTS.L2_STUDIO, -2] },
+  { role: 'data-analyst',          name: 'Sinta',    title: 'Analis',      dept: 'data',        pos: [16, FLOOR_HEIGHTS.L2_STUDIO, -2] },
 
   // Product & Design Team (Front Cluster)
   { role: 'product-manager',       name: 'Andi',     title: 'PM',          dept: 'product',     pos: [-16, FLOOR_HEIGHTS.L2_STUDIO, 8] },
@@ -62,7 +62,7 @@ export const AGENT_REGISTRY_30: Array<{
   { role: 'product-analyst',       name: 'Toni',     title: 'Produk',      dept: 'product',     pos: [2, FLOOR_HEIGHTS.L2_STUDIO, 8] },
   { role: 'ui-ux-designer',        name: 'Lulu',     title: 'Designer',    dept: 'design',      pos: [8, FLOOR_HEIGHTS.L2_STUDIO, 8] },
   { role: 'design-system-designer',name: 'Rina',     title: 'DS Lead',     dept: 'design',      pos: [14, FLOOR_HEIGHTS.L2_STUDIO, 8] },
-  { role: 'brand-designer',        name: 'Citra',    title: 'Brand',       dept: 'design',      pos: [20, FLOOR_HEIGHTS.L2_STUDIO, 8] },
+  { role: 'brand-designer',        name: 'Citra',    title: 'Brand',       dept: 'design',      pos: [17, FLOOR_HEIGHTS.L2_STUDIO, 8] },
 
   // =========================================================================
   // 👑 FLOOR 3 (Level 2, y = 18): EXECUTIVE PENTHOUSE CEO & HELIPAD
