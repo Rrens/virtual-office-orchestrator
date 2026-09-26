@@ -1,4 +1,4 @@
-import { AGENT_REGISTRY_30, OFFICE_WAYPOINTS } from './OfficeWaypoints';
+import { AGENT_REGISTRY_30, OFFICE_WAYPOINTS, FLOOR_HEIGHTS } from './OfficeWaypoints';
 
 export type BehaviorState =
   | 'working'
@@ -33,8 +33,8 @@ export interface AgentBehavior {
   idleTimer: number;
 }
 
-const IDLE_TIMEOUT_MIN = 8;
-const IDLE_TIMEOUT_MAX = 20;
+const IDLE_TIMEOUT_MIN = 12;
+const IDLE_TIMEOUT_MAX = 28;
 
 const BREAK_ACTIVITIES: BehaviorState[] = [
   'coffee_break',
@@ -47,7 +47,7 @@ const BREAK_ACTIVITIES: BehaviorState[] = [
   'pacing',
 ];
 
-const BREAK_WEIGHTS = [0.20, 0.15, 0.15, 0.10, 0.10, 0.08, 0.12, 0.10];
+const BREAK_WEIGHTS = [0.25, 0.15, 0.15, 0.08, 0.08, 0.05, 0.12, 0.12];
 
 function weightedRandom(weights: number[]): number {
   const total = weights.reduce((a, b) => a + b, 0);
@@ -71,6 +71,13 @@ export function resolveTargetForState(
   state: BehaviorState,
   chatPartnerRole?: string
 ): [number, number, number] {
+  if (role === 'security-guard') return OFFICE_WAYPOINTS.SECURITY_POST;
+  if (role === 'receptionist') return OFFICE_WAYPOINTS.RECEPTION_DESK;
+
+  const roleIdx = Math.max(0, AGENT_REGISTRY_30.findIndex((a) => a.role === role));
+  const offsetX = ((roleIdx % 5) - 2) * 1.5;
+  const offsetZ = ((Math.floor(roleIdx / 5) % 3) - 1) * 1.2;
+
   switch (state) {
     case 'working':
     case 'typing':
@@ -81,42 +88,53 @@ export function resolveTargetForState(
       return getHomeDeskByRole(role);
 
     case 'coffee_break':
-      return OFFICE_WAYPOINTS.COFFEE_BAR;
-
-    case 'gaming_ps5': {
-      const couch: [number, number, number][] = [
-        OFFICE_WAYPOINTS.PS5_COUCH_LEFT,
-        OFFICE_WAYPOINTS.PS5_COUCH_CENTER,
-        OFFICE_WAYPOINTS.PS5_COUCH_RIGHT,
+      return [
+        (OFFICE_WAYPOINTS.COFFEE_BAR?.[0] ?? -16) + offsetX * 0.8,
+        OFFICE_WAYPOINTS.COFFEE_BAR?.[1] ?? 0,
+        (OFFICE_WAYPOINTS.COFFEE_BAR?.[2] ?? -14) + offsetZ * 0.8,
       ];
-      return couch[Math.floor(Math.random() * couch.length)];
-    }
+
+    case 'gaming_ps5':
+    case 'playing_guitar':
+    case 'playing_piano':
+    case 'playing_drums':
+      return [
+        (OFFICE_WAYPOINTS.PS5_LOUNGE?.[0] ?? -4) + offsetX,
+        OFFICE_WAYPOINTS.PS5_LOUNGE?.[1] ?? 18,
+        (OFFICE_WAYPOINTS.PS5_LOUNGE?.[2] ?? 6) + offsetZ,
+      ];
 
     case 'playing_billiard':
-      return Math.random() > 0.5 ? OFFICE_WAYPOINTS.BILLIARD_PLAYER_1 : OFFICE_WAYPOINTS.BILLIARD_PLAYER_2;
-
-    case 'playing_guitar':
-      return OFFICE_WAYPOINTS.MUSIC_GUITAR;
-
-    case 'playing_piano':
-      return OFFICE_WAYPOINTS.MUSIC_PIANO;
-
-    case 'playing_drums':
-      return OFFICE_WAYPOINTS.MUSIC_DRUMS;
+      return [
+        (OFFICE_WAYPOINTS.BILLIARD_TABLE?.[0] ?? -10) + (roleIdx % 2 === 0 ? -1.5 : 1.5),
+        OFFICE_WAYPOINTS.BILLIARD_TABLE?.[1] ?? 18,
+        (OFFICE_WAYPOINTS.BILLIARD_TABLE?.[2] ?? 6) + offsetZ * 0.5,
+      ];
 
     case 'chatting':
-      if (chatPartnerRole) return getHomeDeskByRole(chatPartnerRole);
-      return OFFICE_WAYPOINTS.WATER_COOLER;
+      if (chatPartnerRole) {
+        const partnerHome = getHomeDeskByRole(chatPartnerRole);
+        return [partnerHome[0] + 1.2, partnerHome[1], partnerHome[2] + 0.8];
+      }
+      return [
+        (OFFICE_WAYPOINTS.WATER_COOLER?.[0] ?? 16) + offsetX * 0.6,
+        OFFICE_WAYPOINTS.WATER_COOLER?.[1] ?? 0,
+        (OFFICE_WAYPOINTS.WATER_COOLER?.[2] ?? -14) + offsetZ * 0.6,
+      ];
 
     case 'pacing': {
       const home = getHomeDeskByRole(role);
       const dx = (Math.random() - 0.5) * 4;
       const dz = (Math.random() - 0.5) * 3;
-      return [home[0] + dx, 0, home[2] + dz];
+      return [home[0] + dx, home[1], home[2] + dz] as [number, number, number];
     }
 
     case 'meeting':
-      return OFFICE_WAYPOINTS.MEETING_ROOM_1;
+      return [
+        (OFFICE_WAYPOINTS.MEETING_ROUND_1?.[0] ?? -10) + offsetX,
+        OFFICE_WAYPOINTS.MEETING_ROUND_1?.[1] ?? 9,
+        (OFFICE_WAYPOINTS.MEETING_ROUND_1?.[2] ?? 3) + offsetZ,
+      ];
 
     default:
       return getHomeDeskByRole(role);
@@ -128,42 +146,38 @@ export function pickBreakActivity(role: string, allRoles: string[]): {
   chatPartner?: string;
   message: string;
 } {
-  const idx = weightedRandom(BREAK_WEIGHTS);
-  const state = BREAK_ACTIVITIES[idx];
+  const chosenIndex = weightedRandom(BREAK_WEIGHTS);
+  const state = BREAK_ACTIVITIES[chosenIndex];
 
-  if (state === 'coffee_break') {
-    const msgs = ['Ngopi bentar...', 'Need caffeine...', 'Kopi dulu bro!', 'Break dulu~'];
-    return { state, message: msgs[Math.floor(Math.random() * msgs.length)] };
-  }
-  if (state === 'gaming_ps5') {
-    const msgs = ['Main FIFA dulu bro!', 'Warzone dulu!', 'GG WP!', 'PS5 time~'];
-    return { state, message: msgs[Math.floor(Math.random() * msgs.length)] };
-  }
-  if (state === 'playing_billiard') {
-    const msgs = ['Main billiard ah', 'Tricky shot!', '8-ball break!', 'Main stik dulu'];
-    return { state, message: msgs[Math.floor(Math.random() * msgs.length)] };
-  }
-  if (state === 'playing_guitar') {
-    const msgs = ['Jaming gitar 🎸', 'Melodi santai~', 'Latihan solo', 'Akustikan...'];
-    return { state, message: msgs[Math.floor(Math.random() * msgs.length)] };
-  }
-  if (state === 'playing_piano') {
-    const msgs = ['Main piano 🎹', 'Klasik santai~', 'Lagu baru...', 'Harmony mode'];
-    return { state, message: msgs[Math.floor(Math.random() * msgs.length)] };
-  }
-  if (state === 'playing_drums') {
-    const msgs = ['Jaming drum 🥁', 'Beat santai!', 'Latihan ritem', 'Gebuk drum dulu'];
-    return { state, message: msgs[Math.floor(Math.random() * msgs.length)] };
-  }
-  if (state === 'chatting') {
-    const others = allRoles.filter((r) => r !== role);
-    const partner = others[Math.floor(Math.random() * others.length)];
-    const msgs = ['Ngobrol bentar', 'Diskusi santai', 'Tanya progress', 'Bahas ide baru'];
-    return { state, chatPartner: partner, message: msgs[Math.floor(Math.random() * msgs.length)] };
-  }
+  switch (state) {
+    case 'coffee_break':
+      return { state, message: 'Naik lift ngopi ke L2 Pantry ☕' };
 
-  const msgs = ['Kenapa ini error ya...', 'Mikir logic...', 'Hmm...', 'Cari solusi...'];
-  return { state, message: msgs[Math.floor(Math.random() * msgs.length)] };
+    case 'gaming_ps5':
+      return { state, message: 'Naik lift main PS5 di L6 Lounge 🎮' };
+
+    case 'playing_billiard':
+      return { state, message: 'Main Billiard di L6 Sky Lounge 🎱' };
+
+    case 'playing_guitar':
+      return { state, message: 'Jamming gitar di Music Studio L6 🎸' };
+
+    case 'playing_piano':
+      return { state, message: 'Main piano di Music Studio L6 🎹' };
+
+    case 'playing_drums':
+      return { state, message: 'Main drum di Music Studio L6 🥁' };
+
+    case 'chatting': {
+      const peers = allRoles.filter((r) => r !== role && r !== 'security-guard' && r !== 'receptionist');
+      const partner = peers[Math.floor(Math.random() * peers.length)];
+      return { state, chatPartner: partner, message: 'Diskusi dengan rekan tim 💬' };
+    }
+
+    case 'pacing':
+    default:
+      return { state: 'pacing', message: 'Stretching & jalan santai 🚶' };
+  }
 }
 
 export function initBehaviors30(): Record<string, AgentBehavior> {
@@ -197,55 +211,121 @@ export function tickBehaviors30(
   roles.forEach((role) => {
     const b = { ...next[role] };
 
-    const dx = b.targetPos[0] - b.currentPos[0];
-    const dz = b.targetPos[2] - b.currentPos[2];
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    const speed = 3.2;
-
-    if (dist > 0.08) {
-      const step = Math.min(speed * delta, dist);
-      b.currentPos = [
-        b.currentPos[0] + (dx / dist) * step,
-        0,
-        b.currentPos[2] + (dz / dist) * step,
-      ];
+    // Stationary decorative staff
+    if (role === 'security-guard') {
+      b.state = 'idle';
+      b.message = 'Menjaga Keamanan Lobby 🛡️';
+      b.targetPos = OFFICE_WAYPOINTS.SECURITY_POST;
+      b.currentPos = OFFICE_WAYPOINTS.SECURITY_POST;
+      next[role] = b;
+      return;
     }
 
-    const atTarget = dist < 0.2;
+    if (role === 'receptionist') {
+      b.state = 'idle';
+      b.message = 'Menyambut Tamu di Lobby 👋';
+      b.targetPos = OFFICE_WAYPOINTS.RECEPTION_DESK;
+      b.currentPos = OFFICE_WAYPOINTS.RECEPTION_DESK;
+      next[role] = b;
+      return;
+    }
 
-    if (atTarget && (b.state === 'idle' || b.state === 'working' || b.state === 'typing')) {
-      b.idleTimer -= delta;
-      if (b.idleTimer <= 0) {
-        const { state, chatPartner, message } = pickBreakActivity(role, roles);
-        b.state = 'walking';
-        b.message = message;
-        b.chatPartner = chatPartner;
-        b.targetPos = resolveTargetForState(role, state, chatPartner);
-        (b as any)._nextState = state;
-        b.idleTimer = IDLE_TIMEOUT_MIN + Math.random() * (IDLE_TIMEOUT_MAX - IDLE_TIMEOUT_MIN);
+    // Defensive fallback: guarantee valid coordinates and prevent any runtime TypeError
+    if (!b.targetPos || !Array.isArray(b.targetPos) || typeof b.targetPos[1] !== 'number') {
+      b.targetPos = getHomeDeskByRole(role);
+    }
+    if (!b.currentPos || !Array.isArray(b.currentPos) || typeof b.currentPos[1] !== 'number') {
+      b.currentPos = [...b.targetPos];
+    }
+
+    const currentY = b.currentPos[1];
+    const targetY = b.targetPos[1];
+    const isDifferentFloor = Math.abs(currentY - targetY) > 0.5;
+
+    // Movement speed: deliberately slower for comfortable name readability
+    const speed = 1.6;
+
+    if (isDifferentFloor) {
+      // Use a tiny per-agent deterministic queue offset to avoid name tag overlap in front of elevator
+      const roleOffsetMap: Record<string, number> = {};
+      roles.forEach((r, i) => (roleOffsetMap[r] = (i % 5 - 2) * 1.2));
+      const elevatorBaseX = 22;
+      const targetQueueX = elevatorBaseX + roleOffsetMap[role];
+
+      // 1. Move horizontally to the elevator door queue position [targetQueueX, currentY, 0]
+      const toElevatorDx = targetQueueX - b.currentPos[0];
+      const toElevatorDz = 0 - b.currentPos[2];
+      const distToElevator = Math.sqrt(toElevatorDx * toElevatorDx + toElevatorDz * toElevatorDz);
+
+      if (distToElevator > 0.3) {
+        const step = Math.min(speed * delta, distToElevator);
+        b.currentPos = [
+          b.currentPos[0] + (toElevatorDx / distToElevator) * step,
+          currentY,
+          b.currentPos[2] + (toElevatorDz / distToElevator) * step,
+        ];
+        b.message = 'Menuju Lift Kaca 🛗';
+      } else {
+        // 2. Inside elevator: ride vertically to target floor
+        const dy = targetY - currentY;
+        const elevatorSpeed = 4.5;
+        const stepY = Math.sign(dy) * Math.min(elevatorSpeed * delta, Math.abs(dy));
+        b.currentPos = [targetQueueX, currentY + stepY, 0];
+        b.message = `Naik Lift ke Lantai ${Math.round(targetY / 8)} 🛗`;
       }
-    }
+    } else {
+      // Same floor: regular horizontal walking
+      const dx = b.targetPos[0] - b.currentPos[0];
+      const dz = b.targetPos[2] - b.currentPos[2];
+      const dist = Math.sqrt(dx * dx + dz * dz);
 
-    if (atTarget && b.state === 'walking' && (b as any)._nextState) {
-      const ns = (b as any)._nextState as BehaviorState;
-      b.state = ns;
-      (b as any)._nextState = undefined;
+      if (dist > 0.1) {
+        const step = Math.min(speed * delta, dist);
+        b.currentPos = [
+          b.currentPos[0] + (dx / dist) * step,
+          targetY,
+          b.currentPos[2] + (dz / dist) * step,
+        ];
+      } else {
+        b.currentPos = [b.targetPos[0], targetY, b.targetPos[2]];
+      }
 
-      const stayDuration =
-        ns.startsWith('playing_') || ns === 'gaming_ps5'
-          ? 12000 + Math.random() * 8000
-          : ns === 'coffee_break'
-          ? 8000 + Math.random() * 5000
-          : 6000 + Math.random() * 4000;
+      const atTarget = dist < 0.25;
 
-      setTimeout(() => {
-        if (next[role]) {
-          next[role].state = 'walking';
-          next[role].targetPos = getHomeDeskByRole(role);
-          (next[role] as any)._nextState = 'idle';
-          next[role].message = '';
+      if (atTarget && (b.state === 'idle' || b.state === 'working' || b.state === 'typing')) {
+        b.idleTimer -= delta;
+        if (b.idleTimer <= 0) {
+          const { state, chatPartner, message } = pickBreakActivity(role, roles);
+          b.state = 'walking';
+          b.message = message;
+          b.chatPartner = chatPartner;
+          b.targetPos = resolveTargetForState(role, state, chatPartner);
+          (b as any)._nextState = state;
+          b.idleTimer = IDLE_TIMEOUT_MIN + Math.random() * (IDLE_TIMEOUT_MAX - IDLE_TIMEOUT_MIN);
         }
-      }, stayDuration);
+      }
+
+      if (atTarget && b.state === 'walking' && (b as any)._nextState) {
+        const ns = (b as any)._nextState as BehaviorState;
+        b.state = ns;
+        (b as any)._nextState = undefined;
+
+        const stayDuration =
+          ns.startsWith('playing_') || ns === 'gaming_ps5'
+            ? 12000 + Math.random() * 8000
+            : ns === 'coffee_break'
+            ? 8000 + Math.random() * 5000
+            : 6000 + Math.random() * 4000;
+
+        setTimeout(() => {
+          if (next[role]) {
+            next[role].state = 'walking';
+            next[role].targetPos = getHomeDeskByRole(role);
+            (next[role] as any)._nextState = 'idle';
+            next[role].message = '';
+          }
+        }, stayDuration);
+      }
     }
 
     next[role] = b;

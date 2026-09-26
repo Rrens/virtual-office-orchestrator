@@ -238,6 +238,7 @@ export function LogViewerModal({ isOpen, onClose }: Props) {
                 borderRadius: 6,
                 border: '1px solid #cbd5e1',
                 background: '#f8fafc',
+                color: '#0f172a',
               }}
             />
           </div>

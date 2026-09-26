@@ -21,10 +21,11 @@ import { DEPARTMENT_LEADS } from '../orchestrator/hierarchicalPlanner.js';
 export async function registerRoutes(app: FastifyInstance) {
   // Organizations & Projects
   app.post('/api/projects', { preHandler: requireFounder }, async (req, reply) => {
-    const { name, goal, autonomyLevel = 1 } = req.body as {
+    const { name, goal, autonomyLevel = 1, prdFiles = [] } = req.body as {
       name: string;
       goal: string;
       autonomyLevel?: number;
+      prdFiles?: Array<{ name: string; content: string; sizeBytes?: number; mimeType?: string }>;
     };
 
     let org = await prisma.organization.findFirst();
@@ -43,6 +44,17 @@ export async function registerRoutes(app: FastifyInstance) {
         status: 'draft',
       },
     });
+
+    if (Array.isArray(prdFiles) && prdFiles.length > 0) {
+      await prisma.memoryStore.create({
+        data: {
+          scope: 'project',
+          scopeId: project.id,
+          key: 'prd_files',
+          value: JSON.stringify(prdFiles),
+        },
+      });
+    }
 
     return reply.status(201).send(project);
   });
@@ -241,7 +253,7 @@ export async function registerRoutes(app: FastifyInstance) {
   // PRD §31: GET /api/agents/:id alias
   app.get('/api/agents/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const instance = await prisma.agentInstance.findUnique({
+    let instance = await prisma.agentInstance.findUnique({
       where: { id },
       include: {
         definition: { include: { department: true } },
@@ -250,17 +262,340 @@ export async function registerRoutes(app: FastifyInstance) {
         agentRuns: { take: 10, orderBy: { createdAt: 'desc' }, include: { toolCalls: true, task: true } },
       },
     });
-    if (!instance) return reply.status(404).send({ error: 'Agent instance not found' });
+
+    if (!instance) {
+      instance = await prisma.agentInstance.findFirst({
+        where: { definition: { role: id as AgentRole } },
+        include: {
+          definition: { include: { department: true } },
+          project: true,
+          assignedTasks: { take: 5, orderBy: { updatedAt: 'desc' } },
+          agentRuns: { take: 10, orderBy: { createdAt: 'desc' }, include: { toolCalls: true, task: true } },
+        },
+      });
+    }
+
+    if (!instance) {
+      const def = await prisma.agentDefinition.findFirst({
+        where: { OR: [{ id }, { role: id as AgentRole }] },
+        include: { department: true },
+      });
+
+      if (def) {
+        return {
+          id: `def-${def.role}`,
+          definitionId: def.id,
+          definition: def,
+          projectId: null,
+          project: null,
+          status: 'IDLE',
+          currentTask: null,
+          assignedTasks: [],
+          agentRuns: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      return {
+        id: `virtual-${id}`,
+        definitionId: id,
+        definition: {
+          id,
+          role: id,
+          name: id === 'security-guard' ? 'Pak Joko' : id === 'receptionist' ? 'Siti' : id,
+          persona: id === 'security-guard' ? 'Head of Physical Security & Tower Access Control' : id === 'receptionist' ? 'Front Desk & Guest Reception Specialist' : 'Virtual Office Agent',
+          modelTier: 'TIER_1_LOCAL',
+          tools: [],
+          permissions: [],
+          department: { id: 'lobby', name: 'Front Desk & Security', code: 'LOBBY' },
+        },
+        projectId: null,
+        project: null,
+        status: 'IDLE',
+        currentTask: null,
+        assignedTasks: [],
+        agentRuns: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     return instance;
   });
 
+  // Departments list
+  app.get('/api/departments', async () => {
+    return prisma.department.findMany({ orderBy: { name: 'asc' } });
+  });
+
   app.get('/api/agents/definitions', async () => {
-    return getAgentDefinitions();
+    const defs = await getAgentDefinitions();
+    const modelMems = await prisma.memoryStore.findMany({
+      where: {
+        scope: 'organization',
+        scopeId: 'default',
+        key: { startsWith: 'preferred_model_' },
+      },
+    });
+
+    const modelMap = new Map<string, { modelName: string; tier: string }>();
+    for (const mem of modelMems) {
+      try {
+        const role = mem.key.replace('preferred_model_', '');
+        modelMap.set(role, JSON.parse(mem.value));
+      } catch {}
+    }
+
+    return defs.map((d) => ({
+      ...d,
+      preferredModel: modelMap.get(d.role) ?? null,
+    }));
+  });
+
+  // Create new Agent Definition
+  app.post('/api/agents/definitions', async (req, reply) => {
+    const { name, role, persona, modelTier = 'tier1_ollama', tools = [], permissions = [], departmentId } = req.body as {
+      name: string;
+      role: string;
+      persona: string;
+      modelTier?: string;
+      tools?: string[];
+      permissions?: string[];
+      departmentId: string;
+    };
+
+    if (!name || !role || !departmentId) {
+      return reply.status(400).send({ error: 'Name, role, and departmentId are required' });
+    }
+
+    const created = await prisma.agentDefinition.create({
+      data: {
+        name,
+        role,
+        persona: persona || `Agent for ${name}`,
+        modelTier,
+        tools,
+        permissions,
+        departmentId,
+      },
+      include: { department: true },
+    });
+
+    return reply.status(201).send(created);
+  });
+
+  // Update Agent Definition (Rename, edit persona, change tools, permissions, department)
+  app.patch('/api/agents/definitions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { name, persona, modelTier, tools, permissions, departmentId, role } = req.body as {
+      name?: string;
+      persona?: string;
+      modelTier?: string;
+      tools?: string[];
+      permissions?: string[];
+      departmentId?: string;
+      role?: string;
+    };
+
+    const updated = await prisma.agentDefinition.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(persona && { persona }),
+        ...(modelTier && { modelTier }),
+        ...(tools && { tools }),
+        ...(permissions && { permissions }),
+        ...(departmentId && { departmentId }),
+        ...(role && { role }),
+      },
+      include: { department: true },
+    });
+
+    return updated;
+  });
+
+  // Delete Agent Definition
+  app.delete('/api/agents/definitions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await prisma.agentDefinition.delete({ where: { id } });
+    return { success: true };
+  });
+
+  // Batch LLM Preset Override for all agents
+  app.post('/api/agents/models/batch-override', async (req, reply) => {
+    const { preset, modelName, tier } = req.body as {
+      preset?: 'local' | 'balanced' | 'max';
+      modelName?: string;
+      tier?: string;
+    };
+
+    let chosenModel = modelName;
+    let chosenTier = tier;
+
+    if (preset === 'local') {
+      chosenModel = 'qwen2.5-coder:7b';
+      chosenTier = 'tier1_ollama';
+    } else if (preset === 'balanced') {
+      chosenModel = 'qwen-2.5-coder-32b';
+      chosenTier = 'tier2_9router';
+    } else if (preset === 'max') {
+      chosenModel = 'claude-3-5-sonnet';
+      chosenTier = 'tier3_cloud';
+    }
+
+    if (!chosenModel || !chosenTier) {
+      return reply.status(400).send({ error: 'Model and tier are required' });
+    }
+
+    const definitions = await prisma.agentDefinition.findMany();
+    for (const def of definitions) {
+      await prisma.memoryStore.upsert({
+        where: {
+          scope_scopeId_key: {
+            scope: 'organization',
+            scopeId: 'default',
+            key: `preferred_model_${def.role}`,
+          },
+        },
+        update: {
+          value: JSON.stringify({ modelName: chosenModel, tier: chosenTier, updatedAt: new Date().toISOString() }),
+        },
+        create: {
+          scope: 'organization',
+          scopeId: 'default',
+          key: `preferred_model_${def.role}`,
+          value: JSON.stringify({ modelName: chosenModel, tier: chosenTier, updatedAt: new Date().toISOString() }),
+        },
+      });
+    }
+
+    return { success: true, count: definitions.length, modelName: chosenModel, tier: chosenTier };
+  });
+
+  // Available Model Options for Per-Agent Configuration
+  app.get('/api/agents/models/options', async () => {
+    return [
+      { id: 'qwen2.5-coder:3b', name: 'Qwen 2.5 Coder 3B (Local Fast)', tier: 'tier1_ollama', cost: 'Free (Local)' },
+      { id: 'qwen2.5-coder:7b', name: 'Qwen 2.5 Coder 7B (Local Balanced)', tier: 'tier1_ollama', cost: 'Free (Local)' },
+      { id: 'llama3.1:8b', name: 'Llama 3.1 8B (Local General)', tier: 'tier1_ollama', cost: 'Free (Local)' },
+      { id: 'qwen3.5:4b', name: 'Qwen 3.5 4B (Local General)', tier: 'tier1_ollama', cost: 'Free (Local)' },
+      { id: 'qwen-2.5-coder-32b', name: 'Qwen 2.5 Coder 32B (9Router)', tier: 'tier2_9router', cost: 'Low' },
+      { id: 'deepseek-chat', name: 'DeepSeek Chat (9Router)', tier: 'tier2_9router', cost: 'Low' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Cloud / 9Router)', tier: 'tier2_9router', cost: 'Medium' },
+      { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (Cloud)', tier: 'tier3_cloud', cost: 'High' },
+      { id: 'gpt-4o', name: 'GPT-4o (Cloud)', tier: 'tier3_cloud', cost: 'High' },
+    ];
+  });
+
+  // Get agent model config
+  app.get('/api/agents/instances/:id/model', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const mem = await prisma.memoryStore.findUnique({
+      where: {
+        scope_scopeId_key: {
+          scope: 'agent',
+          scopeId: id,
+          key: 'preferred_model',
+        },
+      },
+    });
+
+    if (mem) {
+      try {
+        return JSON.parse(mem.value);
+      } catch {}
+    }
+
+    let roleKey = id;
+    if (id.startsWith('def-') || id.startsWith('virtual-')) {
+      roleKey = id.replace(/^(def-|virtual-)/, '');
+    } else {
+      const inst = await prisma.agentInstance.findUnique({
+        where: { id },
+        include: { definition: true },
+      });
+      if (inst?.definition?.role) {
+        roleKey = inst.definition.role;
+      }
+    }
+
+    const roleMem = await prisma.memoryStore.findUnique({
+      where: {
+        scope_scopeId_key: {
+          scope: 'organization',
+          scopeId: 'default',
+          key: `preferred_model_${roleKey}`,
+        },
+      },
+    });
+
+    if (roleMem) {
+      try {
+        return JSON.parse(roleMem.value);
+      } catch {}
+    }
+
+    return { modelName: null, tier: null };
+  });
+
+  // Override model per agent instance
+  app.patch('/api/agents/instances/:id/model', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { modelName, tier } = req.body as { modelName: string; tier: string };
+
+    const mem = await prisma.memoryStore.upsert({
+      where: {
+        scope_scopeId_key: {
+          scope: 'agent',
+          scopeId: id,
+          key: 'preferred_model',
+        },
+      },
+      update: {
+        value: JSON.stringify({ modelName, tier, updatedAt: new Date().toISOString() }),
+      },
+      create: {
+        scope: 'agent',
+        scopeId: id,
+        key: 'preferred_model',
+        value: JSON.stringify({ modelName, tier, updatedAt: new Date().toISOString() }),
+      },
+    });
+
+    return { success: true, modelName, tier };
+  });
+
+  // Override model globally per role
+  app.patch('/api/agents/roles/:role/model', async (req, reply) => {
+    const { role } = req.params as { role: string };
+    const { modelName, tier } = req.body as { modelName: string; tier: string };
+
+    await prisma.memoryStore.upsert({
+      where: {
+        scope_scopeId_key: {
+          scope: 'organization',
+          scopeId: 'default',
+          key: `preferred_model_${role}`,
+        },
+      },
+      update: {
+        value: JSON.stringify({ modelName, tier, updatedAt: new Date().toISOString() }),
+      },
+      create: {
+        scope: 'organization',
+        scopeId: 'default',
+        key: `preferred_model_${role}`,
+        value: JSON.stringify({ modelName, tier, updatedAt: new Date().toISOString() }),
+      },
+    });
+
+    return { success: true, role, modelName, tier };
   });
 
   app.get('/api/agents/instances/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const instance = await prisma.agentInstance.findUnique({
+    let instance = await prisma.agentInstance.findUnique({
       where: { id },
       include: {
         definition: { include: { department: true } },
@@ -277,7 +612,64 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     });
 
-    if (!instance) return reply.status(404).send({ error: 'Agent instance not found' });
+    if (!instance) {
+      instance = await prisma.agentInstance.findFirst({
+        where: { definition: { role: id as AgentRole } },
+        include: {
+          definition: { include: { department: true } },
+          project: true,
+          assignedTasks: { take: 5, orderBy: { updatedAt: 'desc' } },
+          agentRuns: { take: 10, orderBy: { createdAt: 'desc' }, include: { toolCalls: true, task: true } },
+        },
+      });
+    }
+
+    if (!instance) {
+      const def = await prisma.agentDefinition.findFirst({
+        where: { OR: [{ id }, { role: id as AgentRole }] },
+        include: { department: true },
+      });
+
+      if (def) {
+        return {
+          id: `def-${def.role}`,
+          definitionId: def.id,
+          definition: def,
+          projectId: null,
+          project: null,
+          status: 'IDLE',
+          currentTask: null,
+          assignedTasks: [],
+          agentRuns: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      return {
+        id: `virtual-${id}`,
+        definitionId: id,
+        definition: {
+          id,
+          role: id,
+          name: id === 'security-guard' ? 'Pak Joko' : id === 'receptionist' ? 'Siti' : id,
+          persona: id === 'security-guard' ? 'Head of Physical Security & Tower Access Control' : id === 'receptionist' ? 'Front Desk & Guest Reception Specialist' : 'Virtual Office Agent',
+          modelTier: 'TIER_1_LOCAL',
+          tools: [],
+          permissions: [],
+          department: { id: 'lobby', name: 'Front Desk & Security', code: 'LOBBY' },
+        },
+        projectId: null,
+        project: null,
+        status: 'IDLE',
+        currentTask: null,
+        assignedTasks: [],
+        agentRuns: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     return instance;
   });
 
@@ -311,6 +703,32 @@ export async function registerRoutes(app: FastifyInstance) {
     };
 
     const task = await updateTaskStatus(id, status, assignedAgentId);
+
+    const taskWithWorkflow = await prisma.task.findUnique({
+      where: { id },
+      include: { workflowExecution: true, assignedAgent: { include: { definition: true } } },
+    });
+
+    if (taskWithWorkflow?.workflowExecution?.projectId) {
+      const eventType = status === 'COMPLETED' || status === 'APPROVED' ? 'task.completed'
+        : status === 'RUNNING' || status === 'ASSIGNED' ? 'task.started'
+        : status === 'REVIEW' ? 'task.review'
+        : status === 'BLOCKED' || status === 'FAILED' ? 'task.blocked'
+        : 'task.started';
+
+      await publishEvent({
+        eventId: randomUUID(),
+        timestamp: new Date().toISOString(),
+        type: eventType,
+        projectId: taskWithWorkflow.workflowExecution.projectId,
+        taskId: id,
+        previousStatus: taskWithWorkflow.status as TaskStatus,
+        newStatus: status,
+        agentRole: taskWithWorkflow.agentRole,
+        message: `Status tugas "${taskWithWorkflow.title}" diubah menjadi ${status}`,
+      });
+    }
+
     return task;
   });
 
@@ -370,13 +788,35 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   });
 
-  // Artifacts
+  // Artifacts & Codebase Endpoints
   app.get('/api/tasks/:taskId/artifacts', async (req, reply) => {
     const { taskId } = req.params as { taskId: string };
     const artifacts = await prisma.artifact.findMany({
       where: { taskId },
       orderBy: { createdAt: 'desc' },
       include: { agentInstance: { include: { definition: true } } },
+    });
+    return artifacts;
+  });
+
+  // PRD: Get all artifacts for a project (Codebase File Explorer)
+  app.get('/api/projects/:id/artifacts', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const artifacts = await prisma.artifact.findMany({
+      where: {
+        task: {
+          workflowExecution: {
+            projectId: id,
+          },
+        },
+      },
+      orderBy: [{ path: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        task: true,
+        agentInstance: {
+          include: { definition: { include: { department: true } } },
+        },
+      },
     });
     return artifacts;
   });
@@ -389,6 +829,143 @@ export async function registerRoutes(app: FastifyInstance) {
     });
     if (!artifact) return reply.status(404).send({ error: 'Artifact not found' });
     return artifact;
+  });
+
+  // Edit artifact content from Code Studio
+  app.patch('/api/artifacts/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { content } = req.body as { content: string };
+    const updated = await prisma.artifact.update({
+      where: { id },
+      data: {
+        content,
+        sizeBytes: Buffer.byteLength(content, 'utf8'),
+      },
+    });
+    return updated;
+  });
+
+  // Create new file / artifact in project
+  app.post('/api/projects/:id/artifacts', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { name, path, content, mimeType = 'text/plain', type = 'code' } = req.body as {
+      name: string;
+      path: string;
+      content: string;
+      mimeType?: string;
+      type?: string;
+    };
+
+    const task = await prisma.task.findFirst({
+      where: { workflowExecution: { projectId: id } },
+    });
+    const agent = await prisma.agentInstance.findFirst({
+      where: { projectId: id },
+    });
+
+    if (!task || !agent) {
+      return reply.status(400).send({ error: 'Proyek harus memiliki task dan agent untuk membuat artefak file' });
+    }
+
+    const created = await prisma.artifact.create({
+      data: {
+        taskId: task.id,
+        agentInstanceId: agent.id,
+        name,
+        path: path.startsWith('/') ? path.slice(1) : path,
+        content,
+        sizeBytes: Buffer.byteLength(content, 'utf8'),
+        mimeType,
+        type,
+      },
+    });
+    return reply.status(201).send(created);
+  });
+
+  // Multi-department tasks endpoint for Kanban Board
+  app.get('/api/projects/:id/department-tasks', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const tasks = await prisma.task.findMany({
+      where: { workflowExecution: { projectId: id } },
+      include: {
+        assignedAgent: {
+          include: {
+            definition: { include: { department: true } },
+          },
+        },
+        artifacts: {
+          select: { id: true, name: true, path: true, type: true, sizeBytes: true },
+        },
+        approvals: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return tasks;
+  });
+
+  // Create task for specific division
+  app.post('/api/projects/:id/department-tasks', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { title, description, agentRole } = req.body as {
+      title: string;
+      description: string;
+      agentRole: string;
+    };
+
+    let workflow = await prisma.workflowExecution.findFirst({
+      where: { projectId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!workflow) {
+      workflow = await prisma.workflowExecution.create({
+        data: {
+          projectId: id,
+          status: 'running',
+          dagJson: JSON.stringify({ nodes: [], edges: [] }),
+        },
+      });
+    }
+
+    let agent = await prisma.agentInstance.findFirst({
+      where: { projectId: id, definition: { role: agentRole } },
+    });
+
+    if (!agent) {
+      const def = await prisma.agentDefinition.findUnique({ where: { role: agentRole } });
+      if (def) {
+        agent = await prisma.agentInstance.create({
+          data: {
+            projectId: id,
+            definitionId: def.id,
+            status: 'idle',
+          },
+        });
+      }
+    }
+
+    const newTask = await prisma.task.create({
+      data: {
+        workflowExecutionId: workflow.id,
+        title,
+        description: description || `Tugas untuk divisi ${agentRole}`,
+        agentRole,
+        assignedAgentId: agent?.id ?? null,
+        status: 'QUEUED',
+        inputArtifacts: [],
+        outputArtifacts: [],
+      },
+      include: {
+        assignedAgent: {
+          include: {
+            definition: { include: { department: true } },
+          },
+        },
+        artifacts: true,
+      },
+    });
+
+    return reply.status(201).send(newTask);
   });
 
   // Closed-loop Customer Feedback
@@ -535,7 +1112,7 @@ export async function registerRoutes(app: FastifyInstance) {
     return {
       chiefOrchestrator: {
         role: 'orchestrator',
-        name: 'Budi',
+        name: 'Rendy',
         title: 'Chief Orchestrator (CEO)',
       },
       projectGoal: project.goal,

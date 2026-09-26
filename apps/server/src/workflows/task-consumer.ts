@@ -1,14 +1,17 @@
 import { createConsumer } from '../events/kafka.js';
 import { workflowEngine } from './engine.js';
 import { agentStateMachine } from '../agents/state-machine.js';
+import { spawnAgentInstance } from '../agents/registry.js';
 import { prisma } from '../db.js';
 import { modelRouter } from '../models/router.js';
 import { publishEvent } from '../events/kafka.js';
 import { randomUUID } from 'crypto';
-import { KAFKA_TOPICS } from '@virtual-office/shared';
+import path from 'path';
+import { KAFKA_TOPICS, type AgentRole } from '@virtual-office/shared';
 import { ReviewService } from '../reviews/service.js';
 import { BudgetTracker } from '../memory/budget.js';
 import { logger } from '../utils/logger.js';
+import { extractCodeFiles } from '../utils/exporter.js';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
@@ -91,6 +94,76 @@ async function handleWorkflowStarted(event: any): Promise<void> {
   await workflowEngine.resolveAndQueueTasks(event.workflowExecutionId);
 }
 
+async function resolveAgentForTask(task: { id: string; agentRole: string; workflowExecution: { projectId: string } }) {
+  // 1. Try to find an idle agent with matching role
+  let agent = await prisma.agentInstance.findFirst({
+    where: {
+      projectId: task.workflowExecution.projectId,
+      definition: { role: task.agentRole as AgentRole },
+      status: 'idle',
+    },
+    include: { definition: true },
+  });
+
+  if (agent) return agent;
+
+  // 2. Try any agent with matching role (reset stuck agents if needed)
+  const stuckAgent = await prisma.agentInstance.findFirst({
+    where: {
+      projectId: task.workflowExecution.projectId,
+      definition: { role: task.agentRole as AgentRole },
+    },
+    orderBy: { updatedAt: 'desc' },
+    include: { definition: true },
+  });
+
+  if (stuckAgent) {
+    logger.info('TaskConsumer', `Resetting stuck agent ${stuckAgent.definition.name} (${stuckAgent.id}) to idle`, {
+      agentId: stuckAgent.id,
+      role: task.agentRole,
+    });
+    await prisma.agentInstance.update({ where: { id: stuckAgent.id }, data: { status: 'idle' } });
+    return stuckAgent;
+  }
+
+  // 3. Auto-spawn agent if definition exists
+  try {
+    const definition = await prisma.agentDefinition.findUnique({
+      where: { role: task.agentRole as AgentRole },
+    });
+    if (definition) {
+      logger.info('TaskConsumer', `Auto-spawning agent for role '${task.agentRole}'`, { taskId: task.id });
+      const spawned = await spawnAgentInstance(task.workflowExecution.projectId, task.agentRole as AgentRole);
+      return await prisma.agentInstance.findUnique({
+        where: { id: spawned.id },
+        include: { definition: true },
+      });
+    }
+  } catch (err) {
+    logger.warn('TaskConsumer', `Failed to auto-spawn agent for role '${task.agentRole}': ${err instanceof Error ? err.message : err}`);
+  }
+
+  // 4. Fallback to CEO / orchestrator
+  try {
+    const orchestrator = await prisma.agentInstance.findFirst({
+      where: {
+        projectId: task.workflowExecution.projectId,
+        definition: { role: 'orchestrator' },
+      },
+      include: { definition: true },
+    });
+
+    if (orchestrator) {
+      logger.info('TaskConsumer', `Falling back task ${task.id} to orchestrator`, { role: task.agentRole });
+      return orchestrator;
+    }
+  } catch (err) {
+    logger.warn('TaskConsumer', `Failed to find orchestrator fallback: ${err instanceof Error ? err.message : err}`);
+  }
+
+  return null;
+}
+
 async function handleTaskQueued(event: any): Promise<void> {
   const task = await prisma.task.findUnique({
     where: { id: event.taskId },
@@ -99,17 +172,10 @@ async function handleTaskQueued(event: any): Promise<void> {
 
   if (!task || task.status !== 'QUEUED') return;
 
-  const agent = await prisma.agentInstance.findFirst({
-    where: {
-      projectId: task.workflowExecution.projectId,
-      definition: { role: task.agentRole },
-      status: 'idle',
-    },
-    include: { definition: true },
-  });
+  const agent = await resolveAgentForTask(task);
 
   if (!agent) {
-    logger.warn('TaskConsumer', `No idle agent for role '${task.agentRole}', task ${task.id} stays QUEUED`);
+    logger.warn('TaskConsumer', `No agent could be resolved for role '${task.agentRole}', task ${task.id} stays QUEUED`);
     return;
   }
 
@@ -145,20 +211,51 @@ async function handleTaskQueued(event: any): Promise<void> {
 }
 
 async function executeTask(task: any, agent: any): Promise<void> {
-  const selectedTier = modelRouter.selectTier(task.agentRole, 'medium');
+  // Check for per-agent or per-role model override ("biar ga boncos")
+  let preferredModel: { modelName: string; tier: string } | null = null;
+  const instanceMem = await prisma.memoryStore.findUnique({
+    where: {
+      scope_scopeId_key: {
+        scope: 'agent',
+        scopeId: agent.id,
+        key: 'preferred_model',
+      },
+    },
+  });
+  if (instanceMem) {
+    try { preferredModel = JSON.parse(instanceMem.value); } catch {}
+  }
+
+  if (!preferredModel) {
+    const roleMem = await prisma.memoryStore.findUnique({
+      where: {
+        scope_scopeId_key: {
+          scope: 'organization',
+          scopeId: 'default',
+          key: `preferred_model_${task.agentRole}`,
+        },
+      },
+    });
+    if (roleMem) {
+      try { preferredModel = JSON.parse(roleMem.value); } catch {}
+    }
+  }
+
+  const selectedTier = preferredModel?.tier || modelRouter.selectTier(task.agentRole, 'medium');
 
   // Determine human-readable model name for logs
-  const modelName =
+  const modelName = preferredModel?.modelName || (
     selectedTier === 'tier1_ollama'
       ? (task.agentRole?.includes('engineer') ? 'qwen2.5-coder:3b' : 'qwen3.5:4b')
       : selectedTier === 'tier2_9router'
       ? 'qwen-2.5-coder-32b (9Router)'
-      : 'gpt-4o-mini (Cloud)';
+      : 'gpt-4o-mini (Cloud)'
+  );
 
   logger.info(
     'ModelRouter',
-    `${agent.definition.name} (${task.agentRole}) mulai eksekusi "${task.title}"`,
-    { taskId: task.id, agentId: agent.id, tier: selectedTier },
+    `${agent.definition.name} (${task.agentRole}) mulai eksekusi "${task.title}" via ${modelName}${preferredModel ? ' [Custom Override]' : ''}`,
+    { taskId: task.id, agentId: agent.id, tier: selectedTier, customConfigured: Boolean(preferredModel) },
     modelName,
     task.agentRole
   );
@@ -268,12 +365,40 @@ Deliver the full output now.`;
       }, 1000);
     }
 
-    // Save output artifact
+    // Auto-extract runnable source files from code role outputs
+    let extractedFiles: Array<{ filePath: string; content: string }> = [];
+    if (isCodeRole && response.content) {
+      try {
+        extractedFiles = extractCodeFiles(response.content);
+      } catch (ex) {
+        logger.warn('TaskConsumer', `Failed to extract code files for task ${task.id}: ${String(ex)}`);
+      }
+    }
+
+    // Save individual extracted code files as artifacts for the Code Studio
+    for (const file of extractedFiles.slice(0, 50)) {
+      const ext = path.extname(file.filePath).toLowerCase();
+      const mimeType = ext === '.ts' || ext === '.tsx' ? 'text/typescript' : ext === '.js' || ext === '.jsx' ? 'text/javascript' : ext === '.json' ? 'application/json' : ext === '.css' ? 'text/css' : ext === '.html' ? 'text/html' : ext === '.prisma' ? 'text/prisma' : 'text/plain';
+      await prisma.artifact.create({
+        data: {
+          taskId: task.id,
+          agentInstanceId: agent.id,
+          type: 'source_code',
+          name: path.basename(file.filePath),
+          path: file.filePath,
+          mimeType,
+          sizeBytes: Buffer.byteLength(file.content),
+          content: file.content,
+        },
+      });
+    }
+
+    // Save the aggregated output artifact as well
     await prisma.artifact.create({
       data: {
         taskId: task.id,
         agentInstanceId: agent.id,
-        type: 'documentation',
+        type: extractedFiles.length > 0 ? 'source_bundle' : 'documentation',
         name: `${task.title} Output`,
         path: `artifacts/${task.id}/output.md`,
         mimeType: 'text/markdown',

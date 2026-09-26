@@ -9,18 +9,22 @@ interface Task {
   id: string;
   title: string;
   status: string;
+  description?: string;
   agentRole?: string;
   department?: string;
   subOrchestratorName?: string;
+  outputArtifacts?: string[];
 }
 
 interface Props {
   goal: string;
   tasks: Task[];
   approvals: { id: string; title: string; status: string; description?: string }[];
-  artifacts: { id: string; title: string; taskId?: string }[];
+  artifacts: { id: string; title: string; taskId?: string; taskStatus?: string; taskTitle?: string }[];
   events: WSEvent[];
   onOpenGraphify?: () => void;
+  onOpenArtifact?: (taskId: string, title: string) => void;
+  isMobile?: boolean;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -36,20 +40,22 @@ const STATUS_LABELS: Record<string, string> = {
   'BLOCKED': 'Terhambat', 'FAILED': 'Gagal',
 };
 
-export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOpenGraphify }: Props) {
+export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOpenGraphify, onOpenArtifact, isMobile }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('roadmap');
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const completedCount = tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'APPROVED').length;
 
   return (
     <aside style={{
-      width: 300,
+      width: isMobile ? '100%' : 300,
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
       background: 'var(--panel)',
-      borderLeft: '1px solid var(--line)',
+      borderLeft: isMobile ? 'none' : '1px solid var(--line)',
       flexShrink: 0,
+      WebkitOverflowScrolling: 'touch',
     }}>
       {/* Goal Block */}
       <div style={{ padding: 14, borderBottom: '1px solid var(--line)' }}>
@@ -75,7 +81,8 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
       <div style={{
         display: 'flex',
         borderBottom: '1px solid var(--line)',
-        background: 'rgba(255,255,255,0.6)',
+        background: 'rgba(15, 23, 42, 0.7)',
+        backdropFilter: 'blur(8px)',
       }}>
         {([
           { key: 'roadmap', label: 'Roadmap' },
@@ -89,14 +96,15 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
             onClick={() => setActiveTab(t.key)}
             style={{
               flex: 1,
-              padding: '8px 2px',
-              fontSize: 10,
+              padding: '10px 2px',
+              fontSize: 11,
               fontWeight: 700,
               border: 'none',
-              background: activeTab === t.key ? '#ffffff' : 'transparent',
-              color: activeTab === t.key ? 'var(--text)' : 'var(--muted)',
-              borderBottom: activeTab === t.key ? '2px solid var(--pingot)' : 'none',
+              background: activeTab === t.key ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+              color: activeTab === t.key ? '#ffffff' : 'var(--muted)',
+              borderBottom: activeTab === t.key ? '2px solid var(--pingot)' : '2px solid transparent',
               cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
           >
             {t.label}
@@ -116,17 +124,25 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
               tasks.map((t, i) => {
                 const done = t.status === 'COMPLETED' || t.status === 'APPROVED';
                 const blocked = t.status === 'BLOCKED' || t.status === 'FAILED';
+                const running = t.status === 'RUNNING' || t.status === 'ASSIGNED';
+                const displayTitle = (t.title && t.title !== '...') ? t.title : (t.description && t.description !== '...') ? t.description : `Tugas #${i + 1} (${t.agentRole || 'Tim'})`;
+
                 return (
                   <div
                     key={t.id}
+                    onClick={() => setSelectedTask(t)}
+                    title="Klik untuk melihat detail tugas"
                     style={{
                       padding: '8px 10px',
                       borderRadius: 10,
-                      border: '1px solid var(--line)',
-                      background: done ? '#f7fdf9' : '#ffffff',
+                      border: `1px solid ${done ? 'rgba(16, 185, 129, 0.35)' : running ? 'rgba(99, 102, 241, 0.45)' : 'rgba(255, 255, 255, 0.08)'}`,
+                      background: done ? 'rgba(16, 185, 129, 0.08)' : running ? 'rgba(99, 102, 241, 0.1)' : 'rgba(30, 41, 59, 0.55)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
+                      backdropFilter: 'blur(6px)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
                     }}
                   >
                     <div style={{
@@ -135,16 +151,30 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
                       background: done ? 'var(--ok)' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 9, color: '#fff', fontWeight: 800,
+                      flexShrink: 0,
                     }}>
                       {done ? '✓' : i + 1}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {t.title}
+                      <div style={{ fontSize: 11, color: '#f8fafc', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {displayTitle}
                       </div>
-                      <span className="chip" style={{ fontSize: 9, marginTop: 2, display: 'inline-flex' }}>
-                        {STATUS_LABELS[t.status] ?? t.status}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <span className="chip" style={{
+                          fontSize: 9,
+                          display: 'inline-flex',
+                          background: done ? 'rgba(16, 185, 129, 0.2)' : running ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+                          color: done ? '#34d399' : running ? '#a5b4fc' : '#94a3b8',
+                          borderColor: done ? 'rgba(16, 185, 129, 0.3)' : running ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                        }}>
+                          {STATUS_LABELS[t.status] ?? t.status}
+                        </span>
+                        {t.agentRole && (
+                          <span style={{ fontSize: 9, color: 'var(--faint)', fontFamily: 'monospace' }}>
+                            {t.agentRole.replace(/-/g, ' ')}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -198,11 +228,12 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
                   style={{
                     padding: '8px 10px',
                     borderRadius: 10,
-                    border: `1px solid ${a.status === 'approved' ? 'var(--ok)' : 'var(--line)'}`,
-                    background: a.status === 'approved' ? '#f7fdf9' : '#ffffff',
+                    border: `1px solid ${a.status === 'approved' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
+                    background: a.status === 'approved' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(30, 41, 59, 0.55)',
+                    backdropFilter: 'blur(6px)',
                   }}
                 >
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>{a.title}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc' }}>{a.title}</div>
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, lineHeight: 1.3 }}>{a.description || 'Tidak ada deskripsi.'}</div>
                   <span className="chip" style={{ fontSize: 9, marginTop: 4 }}>
                     <div className="chip-dot" style={{ backgroundColor: a.status === 'approved' ? 'var(--ok)' : a.status === 'pending' ? 'var(--warn)' : 'var(--bad)' }} />
@@ -221,27 +252,68 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
                 Belum ada artifact/output.
               </p>
             ) : (
-              artifacts.map((a) => (
-                <button
-                  key={a.id}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 10px',
-                    borderRadius: 10,
-                    border: '1px solid var(--line)',
-                    background: '#ffffff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)' }}>📄 {a.title}</div>
-                  {a.taskId && (
-                    <div style={{ fontSize: 9, color: 'var(--faint)', marginTop: 2, fontFamily: 'monospace' }}>
-                      task #{String(a.taskId).slice(0, 6)}
+              artifacts.map((a) => {
+                const parentTask = tasks.find((t) => t.id === a.taskId);
+                const status = a.taskStatus || parentTask?.status || 'PENDING';
+                const isReady = status === 'COMPLETED' || status === 'APPROVED';
+
+                return (
+                  <div
+                    key={a.id}
+                    onClick={() => {
+                      if (isReady && a.taskId) {
+                        onOpenArtifact?.(a.taskId, a.title);
+                      } else if (parentTask) {
+                        setSelectedTask(parentTask);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: 10,
+                      border: `1px solid ${isReady ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                      background: isReady ? 'rgba(16, 185, 129, 0.08)' : 'rgba(30, 41, 59, 0.65)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      backdropFilter: 'blur(6px)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        📄 {(a.title && a.title.trim().length > 0 && a.title !== '...' && a.title !== '..' && a.title !== '.') ? a.title : `${a.taskTitle || 'Dokumen'} Output`}
+                      </div>
+                      {isReady ? (
+                        <span style={{ fontSize: 9, color: '#34d399', fontWeight: 700, flexShrink: 0 }}>
+                          ✓ Siap
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 9, color: '#fbbf24', fontWeight: 700, flexShrink: 0 }}>
+                          ⏳ Proses
+                        </span>
+                      )}
                     </div>
-                  )}
-                </button>
-              ))
+
+                    {isReady ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                        {a.taskId && (
+                          <span style={{ fontSize: 9, color: 'var(--faint)', fontFamily: 'monospace' }}>
+                            task #{String(a.taskId).slice(0, 6)}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--pingot)' }}>
+                          Lihat Preview ➔
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="marquee-box" style={{ marginTop: 4, background: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: 4 }}>
+                        <span className="marquee-running" style={{ fontSize: 9.5, fontWeight: 700, color: '#fbbf24' }}>
+                          ⚡ Sedang Dikerjakan · On Progress... (Agent sedang menulis dokumen/kode ini)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         )}
@@ -292,8 +364,8 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
                     style={{
                       padding: '8px 10px',
                       borderRadius: 10,
-                      border: `1px solid ${isApproved ? 'var(--ok)' : 'var(--line)'}`,
-                      background: isApproved ? '#f7fdf9' : '#ffffff',
+                      border: `1px solid ${isApproved ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
+                      background: isApproved ? 'rgba(16, 185, 129, 0.08)' : 'rgba(30, 41, 59, 0.55)',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -322,6 +394,83 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
           </div>
         )}
       </div>
+
+      {/* Task Detail Modal */}
+      {selectedTask && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setSelectedTask(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-bold text-white">📋 Detail Tugas Roadmap</span>
+                <span className="chip" style={{ fontSize: 9 }}>
+                  {STATUS_LABELS[selectedTask.status] ?? selectedTask.status}
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedTask(null)}
+                className="text-slate-400 hover:text-white text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Judul Tugas</p>
+                <p className="text-white font-bold text-sm bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                  {selectedTask.title && selectedTask.title !== '...' ? selectedTask.title : selectedTask.description || 'Tugas Proyek'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Deskripsi & Instruksi</p>
+                <p className="text-slate-300 leading-relaxed bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                  {selectedTask.description && selectedTask.description !== '...' ? selectedTask.description : 'Tidak ada deskripsi rinci.'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Pelaksana / Role</p>
+                  <p className="text-indigo-400 font-semibold font-mono">{selectedTask.agentRole || 'orchestrator'}</p>
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">ID Tugas</p>
+                  <p className="text-slate-400 font-mono text-[11px] truncate">#{selectedTask.id}</p>
+                </div>
+              </div>
+
+              {selectedTask.outputArtifacts && selectedTask.outputArtifacts.length > 0 && (
+                <div>
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Target Artefak / Output</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedTask.outputArtifacts.map((art) => (
+                      <span key={art} className="px-2 py-1 rounded bg-indigo-950/60 border border-indigo-800 text-indigo-300 text-[10px] font-mono">
+                        📄 {art}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setSelectedTask(null)}
+                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

@@ -1,4 +1,5 @@
 import { modelRouter } from '../models/router.js';
+import { prisma } from '../db.js';
 import type { DAGTask, ExecutionPlan } from './types.js';
 import type { AgentRole } from '@virtual-office/shared';
 import { hierarchicalPlanner } from './hierarchicalPlanner.js';
@@ -71,12 +72,100 @@ JSON Output Schema:
   ]
 }`;
 
+export function sanitizeAndBreakCycles<T extends { id: string; dependencies: string[] }>(tasks: T[]): T[] {
+  const taskIds = new Set(tasks.map((t) => t.id));
+
+  // 1. Remove non-existent IDs, self-references, and duplicates
+  for (const task of tasks) {
+    task.dependencies = Array.from(
+      new Set((task.dependencies || []).filter((d) => typeof d === 'string' && d !== task.id && taskIds.has(d)))
+    );
+  }
+
+  // 2. Iteratively break all cycles until graph is strictly acyclic
+  let maxIterations = tasks.length * 2;
+  while (maxIterations-- > 0) {
+    const visited = new Set<string>();
+    const recStack = new Set<string>();
+    let cycleBroken = false;
+
+    const findAndBreakCycle = (nodeId: string): boolean => {
+      visited.add(nodeId);
+      recStack.add(nodeId);
+
+      const task = tasks.find((t) => t.id === nodeId);
+      if (!task) {
+        recStack.delete(nodeId);
+        return false;
+      }
+
+      for (let i = 0; i < task.dependencies.length; i++) {
+        const depId = task.dependencies[i];
+
+        if (recStack.has(depId)) {
+          console.warn(`[GoalPlanner] Breaking detected circular dependency: removed edge ${nodeId} -> ${depId}`);
+          task.dependencies.splice(i, 1);
+          recStack.delete(nodeId);
+          return true; // Break cycle and restart search
+        }
+
+        if (!visited.has(depId)) {
+          if (findAndBreakCycle(depId)) {
+            recStack.delete(nodeId);
+            return true;
+          }
+        }
+      }
+
+      recStack.delete(nodeId);
+      return false;
+    };
+
+    for (const task of tasks) {
+      if (!visited.has(task.id)) {
+        if (findAndBreakCycle(task.id)) {
+          cycleBroken = true;
+          break;
+        }
+      }
+    }
+
+    if (!cycleBroken) {
+      break;
+    }
+  }
+
+  return tasks;
+}
+
 export class GoalPlanner {
   async plan(projectId: string, goal: string): Promise<ExecutionPlan> {
+    let enrichedGoal = goal;
+    try {
+      const prdMem = await prisma.memoryStore.findUnique({
+        where: {
+          scope_scopeId_key: {
+            scope: 'project',
+            scopeId: projectId,
+            key: 'prd_files',
+          },
+        },
+      });
+
+      if (prdMem) {
+        const files: Array<{ name: string; content: string }> = JSON.parse(prdMem.value);
+        if (Array.isArray(files) && files.length > 0) {
+          const prdContext = files.map((f) => `--- File PRD: ${f.name} ---\n${f.content.slice(0, 1500)}`).join('\n\n');
+          enrichedGoal = `${goal}\n\nAttached PRD & Specification Documents:\n${prdContext}`;
+        }
+      }
+    } catch {}
+
     try {
       // Primary: Use Hierarchical Multi-Agent Sub-Orchestrators
-      const hierarchicalPlan = await hierarchicalPlanner.plan(projectId, goal);
+      const hierarchicalPlan = await hierarchicalPlanner.plan(projectId, enrichedGoal);
       if (hierarchicalPlan.tasks && hierarchicalPlan.tasks.length > 0) {
+        hierarchicalPlan.tasks = sanitizeAndBreakCycles(hierarchicalPlan.tasks);
         return hierarchicalPlan;
       }
     } catch (err) {
@@ -99,22 +188,32 @@ export class GoalPlanner {
       const cleanJson = response.content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
       const parsed = JSON.parse(cleanJson);
 
-      // Normalize agent roles: LLM sometimes returns department names instead of specific roles
-      const tasks = (parsed.tasks ?? []).map((t: any) => ({
-        ...t,
+      // Normalize agent roles & sanitize dependencies
+      const tasks: DAGTask[] = (parsed.tasks ?? []).map((t: any, idx: number) => ({
+        id: t.id || `TASK-${idx + 1}`,
+        title: t.title || 'Subtask',
+        description: t.description || '',
         agentRole: normalizeRole(t.agentRole),
+        dependencies: Array.isArray(t.dependencies) ? t.dependencies : [],
+        inputArtifacts: Array.isArray(t.inputArtifacts) ? t.inputArtifacts : [],
+        expectedArtifacts: Array.isArray(t.expectedArtifacts) ? t.expectedArtifacts : [],
+        estimatedComplexity: t.estimatedComplexity || 'medium',
       }));
+
+      const sanitizedTasks = sanitizeAndBreakCycles(tasks);
 
       return {
         projectId,
         goal,
         departments: parsed.departments ?? ['product', 'engineering'],
-        tasks,
+        tasks: sanitizedTasks,
         createdAt: new Date().toISOString(),
       };
     } catch (err) {
       console.warn('[GoalPlanner] LLM generation failed, generating fallback plan:', err instanceof Error ? err.message : err);
-      return this.generateFallbackPlan(projectId, goal);
+      const fallback = this.generateFallbackPlan(projectId, goal);
+      fallback.tasks = sanitizeAndBreakCycles(fallback.tasks);
+      return fallback;
     }
   }
 

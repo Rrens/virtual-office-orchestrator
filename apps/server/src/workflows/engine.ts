@@ -1,5 +1,5 @@
 import { prisma } from '../db.js';
-import { goalPlanner } from '../orchestrator/planner.js';
+import { goalPlanner, sanitizeAndBreakCycles } from '../orchestrator/planner.js';
 import { spawnAgentInstance } from '../agents/registry.js';
 import { publishEvent } from '../events/kafka.js';
 import { randomUUID } from 'crypto';
@@ -21,6 +21,9 @@ export class WorkflowEngine {
 
     // Generate DAG Execution Plan via GoalPlanner
     const plan = await goalPlanner.plan(projectId, project.goal);
+
+    // Sanitize and break any circular dependencies before validating
+    sanitizeAndBreakCycles(plan.tasks);
 
     // Validate DAG cycle
     this.validateDAG(plan.tasks);
@@ -53,12 +56,16 @@ export class WorkflowEngine {
       taskIdMap.set(taskSpec.id, dbTask.id);
     }
 
-    // Save dependencies using DB UUIDs
+    // Save dependencies using DB UUIDs, skipping duplicates
+    const seenDeps = new Set<string>();
     for (const taskSpec of plan.tasks) {
       const dbTaskId = taskIdMap.get(taskSpec.id)!;
       for (const depDagId of taskSpec.dependencies) {
         const dbDepId = taskIdMap.get(depDagId);
         if (dbDepId) {
+          const depKey = `${dbTaskId}-${dbDepId}`;
+          if (seenDeps.has(depKey)) continue;
+          seenDeps.add(depKey);
           await prisma.taskDependency.create({
             data: {
               taskId: dbTaskId,
@@ -98,7 +105,7 @@ export class WorkflowEngine {
       workflowExecutionId: execution.id,
       type: 'workflow.started',
       agentRole: 'orchestrator',
-      message: `Chief Orchestrator (Budi) mendelegasikan ke ${milestoneDesc} — total ${plan.tasks.length} task terdistribusi.`,
+      message: `Chief Orchestrator (Rendy) mendelegasikan ke ${milestoneDesc} — total ${plan.tasks.length} task terdistribusi.`,
       totalTasks: plan.tasks.length,
     });
 
@@ -340,12 +347,15 @@ ${execution.tasks.flatMap((t: any) => t.artifacts.map((a: any) => `- ${a.name} (
   }
 
   private validateDAG(tasks: Array<{ id: string; dependencies: string[] }>): void {
+    // Ensure all cycles are eliminated defensively
+    sanitizeAndBreakCycles(tasks);
+
     const visited = new Set<string>();
     const recStack = new Set<string>();
     const adjList = new Map<string, string[]>();
 
     for (const t of tasks) {
-      adjList.set(t.id, t.dependencies);
+      adjList.set(t.id, t.dependencies || []);
     }
 
     const hasCycle = (node: string): boolean => {
@@ -366,7 +376,8 @@ ${execution.tasks.flatMap((t: any) => t.artifacts.map((a: any) => `- ${a.name} (
 
     for (const t of tasks) {
       if (hasCycle(t.id)) {
-        throw new Error(`Cycle detected in DAG task graph at node '${t.id}'`);
+        console.warn(`[WorkflowEngine] Unexpected cycle remaining at '${t.id}', clearing dependencies to guarantee progress`);
+        t.dependencies = [];
       }
     }
   }

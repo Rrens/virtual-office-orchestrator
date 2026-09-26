@@ -10,11 +10,23 @@ export interface DepartmentLeadConfig {
   members: AgentRole[];
 }
 
+export const DEPT_CODES: Record<string, string> = {
+  product: 'PRD',
+  design: 'DES',
+  engineering: 'ENG',
+  growth: 'GRO',
+  sales: 'SLS',
+  customer: 'CS',
+  data: 'DAT',
+  operations: 'OPS',
+  executive: 'EXEC',
+};
+
 export const DEPARTMENT_LEADS: Record<string, DepartmentLeadConfig> = {
   executive: {
     department: 'executive',
     leadRole: 'orchestrator',
-    leadName: 'Budi',
+    leadName: 'Rendy',
     subOrchestratorTitle: 'Chief Executive Orchestrator',
     members: ['orchestrator', 'business-strategist'],
   },
@@ -213,12 +225,12 @@ Output strict JSON:
 {
   "tasks": [
     {
-      "id": "TASK-...",
-      "title": "...",
-      "description": "...",
-      "agentRole": "...",
+      "id": "TASK-1",
+      "title": "Clear Actionable Task Title",
+      "description": "Comprehensive task description",
+      "agentRole": "agent-role",
       "inputArtifacts": [],
-      "expectedArtifacts": ["..."],
+      "expectedArtifacts": ["docs/spec.md"],
       "estimatedComplexity": "low" | "medium" | "high"
     }
   ]
@@ -236,27 +248,94 @@ Output strict JSON:
       const parsed = JSON.parse(cleanJson);
 
       if (Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
-        return parsed.tasks.map((t: any, idx: number) => ({
-          id: t.id || `TASK-${milestone.department.toUpperCase()}-${idx + 1}`,
-          title: t.title,
-          description: t.description,
-          agentRole: lead.members.includes(t.agentRole) ? t.agentRole : lead.leadRole,
-          dependencies: Array.isArray(t.dependencies) ? t.dependencies : [],
-          inputArtifacts: Array.isArray(t.inputArtifacts) ? t.inputArtifacts : [],
-          expectedArtifacts: Array.isArray(t.expectedArtifacts) ? t.expectedArtifacts : [`artifacts/${milestone.department}/output.md`],
-          estimatedComplexity: ['low', 'medium', 'high'].includes(t.estimatedComplexity) ? t.estimatedComplexity : 'medium',
-          department: milestone.department,
-          subOrchestratorRole: lead.leadRole,
-          subOrchestratorName: lead.leadName,
-          milestoneId: milestone.id,
-          milestoneTitle: milestone.directive,
-        }));
+        const deptCode = DEPT_CODES[milestone.department] || milestone.department.slice(0, 3).toUpperCase();
+
+        // Build mapping from LLM local task ID to unique department-scoped task ID
+        const idMap = new Map<string, string>();
+        parsed.tasks.forEach((t: any, idx: number) => {
+          const uniqueId = `TASK-${deptCode}-${idx + 1}`;
+          if (t.id) idMap.set(String(t.id).trim(), uniqueId);
+          idMap.set(String(idx + 1), uniqueId);
+          idMap.set(`TASK-${idx + 1}`, uniqueId);
+        });
+
+        return parsed.tasks.map((t: any, idx: number) => {
+          const rawTitle = typeof t.title === 'string' ? t.title.trim() : '';
+          const rawDesc = typeof t.description === 'string' ? t.description.trim() : '';
+          const fallbackTitle = this.generateTaskTitle(milestone.department, idx, t.agentRole);
+          const title = this.sanitizeTaskField(rawTitle) || fallbackTitle;
+          const description = this.sanitizeTaskField(rawDesc) || title;
+          const uniqueId = `TASK-${deptCode}-${idx + 1}`;
+
+          // Remap internal dependencies
+          const mappedDeps = Array.isArray(t.dependencies)
+            ? Array.from(
+                new Set(
+                  t.dependencies
+                    .map((d: any) => idMap.get(String(d).trim()))
+                    .filter((d: any): d is string => typeof d === 'string' && d !== uniqueId)
+                )
+              )
+            : [];
+
+          const cleanArtifacts = Array.isArray(t.expectedArtifacts)
+            ? t.expectedArtifacts
+                .filter((a: any) => typeof a === 'string')
+                .map((a: string) => a.trim())
+                .filter((a: string) => a && a !== '...' && a !== '..' && a !== '.' && a.length > 2)
+            : [];
+          const expectedArtifacts = cleanArtifacts.length > 0
+            ? cleanArtifacts
+            : [`docs/${milestone.department}/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`];
+
+          return {
+            id: uniqueId,
+            title,
+            description,
+            agentRole: lead.members.includes(t.agentRole) ? t.agentRole : lead.leadRole,
+            dependencies: mappedDeps,
+            inputArtifacts: Array.isArray(t.inputArtifacts) ? t.inputArtifacts : [],
+            expectedArtifacts,
+            estimatedComplexity: ['low', 'medium', 'high'].includes(t.estimatedComplexity) ? t.estimatedComplexity : 'medium',
+            department: milestone.department,
+            subOrchestratorRole: lead.leadRole,
+            subOrchestratorName: lead.leadName,
+            milestoneId: milestone.id,
+            milestoneTitle: milestone.directive,
+          };
+        });
       }
     } catch {
       // Fall through to deterministic department generator
     }
 
     return this.generateDepartmentFallbackTasks(milestone, goal);
+  }
+
+  private sanitizeTaskField(val?: string): string | null {
+    if (!val) return null;
+    const trimmed = val.trim();
+    if (trimmed === '...' || trimmed === '..' || trimmed === '.' || trimmed.length < 3) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  private generateTaskTitle(dept: string, index: number, role?: string): string {
+    const roleClean = role ? role.replace(/-/g, ' ') : 'team';
+    const deptTitles: Record<string, string[]> = {
+      product: ['Analisis Kebutuhan & User Journey', 'Penyusunan Dokumen PRD & Fitur', 'Spesifikasi Acceptance Criteria', 'Validasi Ruang Lingkup Produk'],
+      design: ['Riset UX & Wireframing UI', 'Design System & Component Library', 'Desain Prototipe Interaktif', 'Design Review & Export Asset'],
+      engineering: ['Arsitektur Backend & Database Schema', 'Implementasi API & Business Logic', 'Frontend UI & Integrasi State', 'Deployment & CI/CD Pipeline'],
+      growth: ['Riset Target Market & Audiens', 'Copywriting & Content Strategy', 'Setup Campaign & Funnel Analitik', 'Peluncuran Media Sosial & PR'],
+      sales: ['Identifikasi Lead & ICP Pipeline', 'Penyusunan Pitch Deck & Demo Script', 'Proses Outreach & Kualifikasi', 'Review Closing & Sales Playbook'],
+      customer: ['Penyusunan FAQ & Dokumentasi Bantuan', 'Setup Helpdesk & Escalation Path', 'SOP Troubleshooting & Onboarding', 'Customer Feedback Loop Setup'],
+      data: ['Desain Data Pipeline & Model Schema', 'ETL Analytics & Event Tracking', 'Dashboard Reporting & Insight KPI', 'Optimasi Query & Model Inference'],
+      operations: ['Audit Keamanan & Risk Assessment', 'Konfigurasi Monitoring & SLA', 'Dokumentasi SOP Operasional', 'Final Sign-off & Runbook'],
+    };
+
+    const list = deptTitles[dept] || ['Implementasi Fitur & Modul', 'Pengujian & Integrasi', 'Dokumentasi & Review'];
+    return list[index % list.length] || `Pengerjaan Tugas ${roleClean}`;
   }
 
   /**

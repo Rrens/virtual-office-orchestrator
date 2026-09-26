@@ -268,18 +268,38 @@ export function AgentCharacter({
         <mesh position={[0.07, 0.02, 0.17]} material={dark}><sphereGeometry args={[0.025, 8, 8]} /></mesh>
       </group>
 
-      {/* Name tag + bubble */}
-      <Billboard position={[0, 1.95, 0]} follow>
-        <mesh><planeGeometry args={[1.2, 0.32]} /><meshBasicMaterial color={shirtColor} /></mesh>
-        <Text position={[0, 0, 0.01]} fontSize={0.12} color="#ffffff" anchorX="center" anchorY="middle">{name} · {title}</Text>
+      {/* Sleek Floating Pill Badge + Speech Bubble */}
+      <Billboard position={[0, 2.0, 0]} follow lockX={false} lockY={false} lockZ={false}>
+        {/* Name Tag Pill */}
+        <mesh position={[0, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <capsuleGeometry args={[0.13, Math.max(0.5, (name.length + title.length) * 0.042), 4, 12]} />
+          <meshBasicMaterial color={shirtColor} side={THREE.DoubleSide} />
+        </mesh>
+        <Text
+          position={[0, 0, 0.02]}
+          fontSize={0.12}
+          color="#ffffff"
+          anchorX="center"
+          anchorY="middle"
+          fontWeight="bold"
+        >
+          {name} · {title}
+        </Text>
 
         {displayMsg && (
-          <group position={[0, 0.32, 0]}>
-            <mesh>
-              <planeGeometry args={[Math.max(1.0, displayMsg.length * 0.1), 0.24]} />
-              <meshBasicMaterial color={isWarn ? '#fff4d6' : '#ffffff'} />
+          <group position={[0, 0.34, 0]}>
+            <mesh rotation={[0, 0, Math.PI / 2]}>
+              <capsuleGeometry args={[0.11, Math.max(0.6, displayMsg.length * 0.042), 4, 12]} />
+              <meshBasicMaterial color={isWarn ? '#fef3c7' : '#ffffff'} side={THREE.DoubleSide} />
             </mesh>
-            <Text position={[0, 0, 0.01]} fontSize={0.1} color={isWarn ? '#7a5800' : '#2b2a28'} anchorX="center" anchorY="middle">
+            <Text
+              position={[0, 0, 0.02]}
+              fontSize={0.095}
+              color={isWarn ? '#92400e' : '#0f172a'}
+              anchorX="center"
+              anchorY="middle"
+              fontWeight="bold"
+            >
               {displayMsg}
             </Text>
           </group>

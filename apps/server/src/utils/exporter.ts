@@ -34,7 +34,7 @@ function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-function extractCodeFiles(markdown: string): Array<{ filePath: string; content: string }> {
+export function extractCodeFiles(markdown: string): Array<{ filePath: string; content: string }> {
   const files: Array<{ filePath: string; content: string }> = [];
 
   const headerBlockRegex = /(?:###?|####)\s+([a-zA-Z0-9_\-\.\/]+\.[a-zA-Z0-9]+)\s*\n+```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g;

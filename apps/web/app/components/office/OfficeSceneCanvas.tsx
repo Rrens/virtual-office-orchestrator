@@ -1,8 +1,8 @@
 'use client';
 
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
-import { useRef, useEffect, useState } from 'react';
+import { OrbitControls, Sky } from '@react-three/drei';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { OfficeEnvironment } from './OfficeEnvironment';
@@ -14,7 +14,7 @@ import {
   type BehaviorState,
   getHomeDeskByRole,
 } from './AgentBehaviorController';
-import { AGENT_REGISTRY_30, OFFICE_WAYPOINTS, DEPT_THEMES } from './OfficeWaypoints';
+import { AGENT_REGISTRY_30, OFFICE_WAYPOINTS, FLOOR_HEIGHTS } from './OfficeWaypoints';
 import type { WSEvent } from '../../../hooks/useProjectWebSocket';
 
 interface Props {
@@ -32,10 +32,12 @@ function SimulationLoop({
   const tickAccum = useRef(0);
 
   useFrame((_, delta) => {
-    behaviorsRef.current = tickBehaviors30(behaviorsRef.current, delta);
+    const clampedDelta = Math.min(delta, 0.05);
+    behaviorsRef.current = tickBehaviors30(behaviorsRef.current, clampedDelta);
 
-    tickAccum.current += delta;
-    if (tickAccum.current > 0.05) {
+    // Throttle React state re-renders to twice per second for max performance
+    tickAccum.current += clampedDelta;
+    if (tickAccum.current > 0.5) {
       setBehaviorsState({ ...behaviorsRef.current });
       tickAccum.current = 0;
     }
@@ -46,6 +48,7 @@ function SimulationLoop({
 
 export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
+  const [activeFloor, setActiveFloor] = useState<number>(FLOOR_HEIGHTS.L2_STUDIO);
   const [selectedDept, setSelectedDept] = useState<string | null>(null);
 
   const behaviorsRef = useRef<Record<string, AgentBehavior>>(initBehaviors30());
@@ -89,60 +92,77 @@ export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
     setBehaviors({ ...next });
   }, [events]);
 
+  // Floor Switch Camera presets
+  const switchFloor = (floorHeight: number) => {
+    setActiveFloor(floorHeight);
+    setSelectedDept(null);
+    if (!controlsRef.current) return;
+
+    if (floorHeight === FLOOR_HEIGHTS.L1_GROUND) {
+      controlsRef.current.target.set(0, 0, 0);
+      controlsRef.current.object.position.set(0, 20, 36);
+    } else if (floorHeight === FLOOR_HEIGHTS.L2_STUDIO) {
+      controlsRef.current.target.set(0, 9, 0);
+      controlsRef.current.object.position.set(0, 24, 34);
+    } else if (floorHeight === FLOOR_HEIGHTS.L3_PENTHOUSE) {
+      controlsRef.current.target.set(0, 18, 0);
+      controlsRef.current.object.position.set(0, 34, 30);
+    } else {
+      // Compact HQ Overview
+      controlsRef.current.target.set(0, 9, 0);
+      controlsRef.current.object.position.set(0, 42, 60);
+    }
+    controlsRef.current.update();
+  };
+
   // Teleport/Focus Camera to Department
   const focusDept = (deptKey: string) => {
     setSelectedDept(deptKey);
     if (!controlsRef.current) return;
 
-    const DEPT_CAMERAS: Record<string, { pos: [number, number, number]; target: [number, number, number] }> = {
-      executive:   { pos: [-16, 12, -7],  target: [-16, 0, -14] },
-      product:     { pos: [-2, 12, -7],   target: [-2, 0, -14] },
-      design:      { pos: [14, 12, -7],   target: [14, 0, -14] },
-      engineering: { pos: [-10, 16, 3],   target: [-10, 0, -4] },
-      growth:      { pos: [12, 14, 3],    target: [12, 0, -4] },
-      sales:       { pos: [-14, 14, 14],  target: [-14, 0, 7] },
-      customer:    { pos: [-2, 14, 14],   target: [-2, 0, 7] },
-      data:        { pos: [11, 14, 14],   target: [11, 0, 7] },
-      leisure:     { pos: [0, 14, 25],    target: [0, 0, 16] },
+    const DEPT_CAMERAS: Record<string, { pos: [number, number, number]; target: [number, number, number]; floor: number }> = {
+      executive:   { pos: [-8, 26, 8],     target: [-8, 18, -4],    floor: FLOOR_HEIGHTS.L3_PENTHOUSE },
+      helipad:     { pos: [12, 26, 14],    target: [10, 18, 0],     floor: FLOOR_HEIGHTS.L3_PENTHOUSE },
+      tech:        { pos: [-8, 18, 16],    target: [-8, 9, -6],     floor: FLOOR_HEIGHTS.L2_STUDIO },
+      data:        { pos: [14, 18, 16],    target: [14, 9, -6],     floor: FLOOR_HEIGHTS.L2_STUDIO },
+      design:      { pos: [6, 18, 24],     target: [6, 9, 8],       floor: FLOOR_HEIGHTS.L2_STUDIO },
+      lobby:       { pos: [0, 10, 26],     target: [0, 0, 6],       floor: FLOOR_HEIGHTS.L1_GROUND },
+      sales:       { pos: [-10, 10, 16],   target: [-10, 0, -2],    floor: FLOOR_HEIGHTS.L1_GROUND },
+      pantry:      { pos: [12, 10, 16],    target: [12, 0, -2],     floor: FLOOR_HEIGHTS.L1_GROUND },
     };
 
-    const cam = DEPT_CAMERAS[deptKey] ?? { pos: [0, 32, 28], target: [0, 0, 0] };
-    controlsRef.current.target.set(...cam.target);
-    controlsRef.current.object.position.set(...cam.pos);
-    controlsRef.current.update();
-  };
-
-  // Leisure manual triggers
-  const triggerActivity = (activity: BehaviorState, message: string) => {
-    const next = { ...behaviorsRef.current };
-    const candidates = AGENT_REGISTRY_30.filter((a) => next[a.role]?.state === 'idle');
-    if (!candidates.length) return;
-
-    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
-    next[chosen.role].state = 'walking';
-    (next[chosen.role] as any)._nextState = activity;
-    next[chosen.role].message = message;
-
-    if (activity === 'playing_billiard') {
-      next[chosen.role].targetPos = OFFICE_WAYPOINTS.BILLIARD_PLAYER_1;
-    } else if (activity === 'playing_guitar') {
-      next[chosen.role].targetPos = OFFICE_WAYPOINTS.MUSIC_GUITAR;
-    } else if (activity === 'playing_piano') {
-      next[chosen.role].targetPos = OFFICE_WAYPOINTS.MUSIC_PIANO;
-    } else if (activity === 'playing_drums') {
-      next[chosen.role].targetPos = OFFICE_WAYPOINTS.MUSIC_DRUMS;
-    } else if (activity === 'gaming_ps5') {
-      next[chosen.role].targetPos = OFFICE_WAYPOINTS.PS5_COUCH_CENTER;
-    } else if (activity === 'coffee_break') {
-      next[chosen.role].targetPos = OFFICE_WAYPOINTS.COFFEE_BAR;
+    const cam = DEPT_CAMERAS[deptKey];
+    if (cam) {
+      setActiveFloor(cam.floor);
+      controlsRef.current.target.set(...cam.target);
+      controlsRef.current.object.position.set(...cam.pos);
+      controlsRef.current.update();
     }
-
-    behaviorsRef.current = next;
-    setBehaviors({ ...next });
   };
 
-  const workingCount = AGENT_REGISTRY_30.filter((a) =>
-    ['working', 'typing', 'thinking'].includes(behaviors[a.role]?.state ?? '')
+  const activeEventRoles = useMemo(() => {
+    return new Set(
+      events
+        .filter((e) => {
+          const type = String(e.type ?? '');
+          const status = String(e.newStatus ?? '');
+          return (
+            type.includes('started') ||
+            status === 'working' ||
+            status === 'RUNNING' ||
+            status === 'ASSIGNED' ||
+            status === 'REVIEW'
+          );
+        })
+        .map((e) => e.agentRole ?? e.role)
+        .filter(Boolean)
+    );
+  }, [events]);
+
+  const workingCount = AGENT_REGISTRY_30.filter(
+    (a) =>
+      ['working', 'typing', 'thinking'].includes(behaviors[a.role]?.state ?? '') ||
+      activeEventRoles.has(a.role)
   ).length;
 
   return (
@@ -152,18 +172,18 @@ export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
         height: '100%',
         borderRadius: 14,
         overflow: 'hidden',
-        background: '#c5baa9',
+        background: '#e0f2fe',
         position: 'relative',
         border: '1px solid var(--line)',
       }}
     >
-      {/* HUD Top Bar: Department View Tabs */}
+      {/* HUD Top Bar: 9-Floor Pure Corporate Tower Navigation */}
       <div
         style={{
           position: 'absolute',
-          top: 10,
-          left: 10,
-          right: 10,
+          top: 12,
+          left: 12,
+          right: 12,
           zIndex: 10,
           display: 'flex',
           justifyContent: 'space-between',
@@ -171,169 +191,188 @@ export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
           pointerEvents: 'none',
         }}
       >
-        {/* Dept Switcher Pills */}
+        {/* Floor Switcher Scrollable Bar */}
         <div
           style={{
-            background: 'rgba(255, 255, 255, 0.92)',
-            backdropFilter: 'blur(8px)',
-            borderRadius: 10,
+            background: 'rgba(15, 23, 42, 0.88)',
+            backdropFilter: 'blur(16px)',
+            borderRadius: 12,
             padding: '4px 8px',
             display: 'flex',
             gap: 4,
-            overflowX: 'auto',
-            border: '1px solid #d5cabb',
+            border: '1px solid var(--line-strong)',
+            boxShadow: 'var(--shadow-lg)',
             pointerEvents: 'auto',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+            overflowX: 'auto',
+            maxWidth: '75%',
           }}
         >
-          <button
-            onClick={() => { setSelectedDept(null); if (controlsRef.current) { controlsRef.current.target.set(0, 0, 0); controlsRef.current.object.position.set(0, 32, 28); controlsRef.current.update(); } }}
-            className="chip"
-            style={{ cursor: 'pointer', background: selectedDept === null ? '#1e293b' : '#fff', color: selectedDept === null ? '#fff' : '#475569' }}
-          >
-            🏢 Seluruh Kantor (30 Agen)
-          </button>
-          {Object.entries(DEPT_THEMES).map(([deptKey, theme]) => (
+          {[
+            { floor: FLOOR_HEIGHTS.L1_GROUND, label: '🏢 GF: Grand Lobby & Cafe' },
+            { floor: FLOOR_HEIGHTS.L2_STUDIO, label: '💻 L1: Mega Tech & Design Studio' },
+            { floor: FLOOR_HEIGHTS.L3_PENTHOUSE, label: '👑 L2: Penthouse CEO & Helipad 🚁' },
+            { floor: -1, label: '🌐 Full HQ Overview' },
+          ].map((f) => (
             <button
-              key={deptKey}
-              onClick={() => focusDept(deptKey)}
-              className="chip"
+              key={f.floor}
+              onClick={() => switchFloor(f.floor)}
               style={{
+                padding: '5px 12px',
+                borderRadius: 8,
+                border: 'none',
+                fontSize: 11,
+                fontWeight: 700,
                 cursor: 'pointer',
-                background: selectedDept === deptKey ? theme.color : '#fff',
-                color: selectedDept === deptKey ? '#fff' : '#475569',
-                borderColor: selectedDept === deptKey ? theme.color : '#cbd5e1',
-                fontSize: 10.5,
+                background: activeFloor === f.floor ? 'linear-gradient(135deg, var(--pingot), #3b82f6)' : 'transparent',
+                color: activeFloor === f.floor ? '#ffffff' : 'var(--muted)',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
               }}
             >
-              {theme.name}
+              {f.label}
             </button>
           ))}
-          <button
-            onClick={() => focusDept('leisure')}
-            className="chip"
-            style={{ cursor: 'pointer', background: selectedDept === 'leisure' ? '#b45309' : '#fff', color: selectedDept === 'leisure' ? '#fff' : '#b45309', fontWeight: 700 }}
-          >
-            🎱 Studio Musik & Billiard
-          </button>
         </div>
 
-        {/* Live Active Pill */}
+        {/* Live Active Agents Pill */}
         <div
           style={{
-            background: 'rgba(255, 255, 255, 0.92)',
-            backdropFilter: 'blur(8px)',
-            borderRadius: 10,
-            padding: '6px 12px',
-            border: '1px solid #d5cabb',
+            background: 'rgba(15, 23, 42, 0.88)',
+            backdropFilter: 'blur(16px)',
+            borderRadius: 12,
+            padding: '6px 14px',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            fontSize: 11,
+            border: '1px solid var(--line-strong)',
+            boxShadow: 'var(--shadow)',
             pointerEvents: 'auto',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
           }}
         >
-          <div className="chip-dot live-dot" style={{ backgroundColor: 'var(--ok)' }} />
-          <span style={{ fontWeight: 700, color: '#1e293b' }}>
-            30 Karyawan Aktif
-          </span>
-          <span className="chip" style={{ fontSize: 10 }}>
-            {workingCount} sibuk
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: workingCount > 0 ? 'var(--ok)' : 'var(--faint)',
+            }}
+            className={workingCount > 0 ? 'live-dot' : ''}
+          />
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>
+            {workingCount}/30 Agent Aktif
           </span>
         </div>
       </div>
 
-      {/* Leisure Quick Actions (Bottom Bar) */}
+      {/* HUD Bottom Bar: Department Quick Jump & Feature Teleports */}
       <div
         style={{
           position: 'absolute',
-          bottom: 10,
-          left: 10,
+          bottom: 12,
+          left: 12,
+          right: 12,
           zIndex: 10,
-          background: 'rgba(255, 255, 255, 0.92)',
-          backdropFilter: 'blur(8px)',
-          borderRadius: 10,
-          padding: '6px 10px',
-          border: '1px solid #d5cabb',
           display: 'flex',
-          gap: 6,
+          justifyContent: 'space-between',
           alignItems: 'center',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+          pointerEvents: 'none',
         }}
       >
-        <span style={{ fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>Aktivitas Santai:</span>
-        <button
-          onClick={() => triggerActivity('playing_billiard', 'Main billiard 🎱')}
-          className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff', color: '#15803d', fontWeight: 600 }}
-          title="Kirim agent main billiard"
+        {/* Dept Quick Focus */}
+        <div
+          style={{
+            background: 'rgba(15, 23, 42, 0.88)',
+            backdropFilter: 'blur(16px)',
+            borderRadius: 12,
+            padding: '4px 8px',
+            display: 'flex',
+            gap: 4,
+            border: '1px solid var(--line-strong)',
+            pointerEvents: 'auto',
+            overflowX: 'auto',
+          }}
         >
-          🎱 Main Billiard
-        </button>
-        <button
-          onClick={() => triggerActivity('playing_guitar', 'Jaming gitar 🎸')}
-          className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff', color: '#d9772f', fontWeight: 600 }}
-          title="Kirim agent main gitar"
-        >
-          🎸 Jaming Gitar
-        </button>
-        <button
-          onClick={() => triggerActivity('playing_piano', 'Main piano 🎹')}
-          className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff', color: '#0f172a', fontWeight: 600 }}
-          title="Kirim agent main piano"
-        >
-          🎹 Main Piano
-        </button>
-        <button
-          onClick={() => triggerActivity('playing_drums', 'Gebuk drum 🥁')}
-          className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff', color: '#b91c1c', fontWeight: 600 }}
-          title="Kirim agent main drum"
-        >
-          🥁 Main Drum
-        </button>
-        <button
-          onClick={() => triggerActivity('gaming_ps5', 'Main FIFA 🎮')}
-          className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff', color: '#2563eb', fontWeight: 600 }}
-          title="Kirim agent main PS5"
-        >
-          🎮 Main PS5
-        </button>
-        <button
-          onClick={() => triggerActivity('coffee_break', 'Ngopi dulu ☕')}
-          className="chip"
-          style={{ cursor: 'pointer', background: '#ffffff', color: '#78350f', fontWeight: 600 }}
-          title="Kirim agent ngopi"
-        >
-          ☕ Ngopi
-        </button>
+          {[
+            { key: 'executive', label: '👑 CEO Rendy' },
+            { key: 'tech', label: '💻 Tech Lab' },
+            { key: 'data', label: '🚀 Data Center' },
+            { key: 'design', label: '🎨 Design Studio' },
+            { key: 'sales', label: '💼 Sales & CS' },
+            { key: 'pantry', label: '☕ Cafe Pantry' },
+            { key: 'lobby', label: '🏢 Grand Lobby' },
+            { key: 'helipad', label: '🚁 Helipad' },
+          ].map((d) => (
+            <button
+              key={d.key}
+              onClick={() => focusDept(d.key)}
+              style={{
+                padding: '5px 10px',
+                borderRadius: 7,
+                border: 'none',
+                fontSize: 10.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: selectedDept === d.key ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                color: selectedDept === d.key ? '#38bdf8' : 'var(--muted)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Canvas camera={{ position: [0, 32, 28], fov: 50 }} shadows>
-        <ambientLight intensity={1.1} color="#fffcf5" />
-        <directionalLight
-          position={[15, 30, 20]}
-          intensity={1.5}
-          color="#fff8eb"
-          castShadow
-          shadow-mapSize={[2048, 2048]}
+      {/* 3D Daylight Canvas Scene */}
+      <Canvas
+        shadows
+        camera={{ position: [0, 42, 60], fov: 45 }}
+        style={{ width: '100%', height: '100%' }}
+        dpr={[1, 1.5]}
+        gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+      >
+        <color attach="background" args={['#87ceeb']} />
+        <Sky
+          distance={450000}
+          sunPosition={[100, 70, 70]}
+          inclination={0}
+          azimuth={0.25}
+          mieCoefficient={0.005}
+          rayleigh={0.5}
+          turbidity={3}
         />
-        <pointLight position={[-14, 6, 16]} intensity={0.8} color="#fef08a" distance={15} />
-        <pointLight position={[8, 6, 16]} intensity={0.8} color="#fde68a" distance={15} />
-        <pointLight position={[17, 6, 15]} intensity={0.7} color="#60a5fa" distance={15} />
+
+        <ambientLight intensity={0.9} color="#f8fafc" />
+        <directionalLight
+          position={[40, 60, 30]}
+          intensity={1.2}
+          color="#fffbeb"
+          castShadow
+          shadow-mapSize-width={1024}
+          shadow-mapSize-height={1024}
+          shadow-camera-left={-35}
+          shadow-camera-right={35}
+          shadow-camera-top={35}
+          shadow-camera-bottom={-35}
+        />
+        <pointLight position={[0, 9, 0]} intensity={0.6} color="#38bdf8" distance={35} />
+        <pointLight position={[0, 18, 0]} intensity={0.8} color="#facc15" distance={30} />
+
+        <OrbitControls
+          ref={controlsRef}
+          enableDamping
+          dampingFactor={0.08}
+          maxPolarAngle={Math.PI / 2 - 0.01}
+          minDistance={4}
+          maxDistance={140}
+        />
 
         <SimulationLoop behaviorsRef={behaviorsRef} setBehaviorsState={setBehaviors} />
-
         <OfficeEnvironment />
 
-        {/* Render all 30 Agents */}
+        {/* Render 30 Agents */}
         {AGENT_REGISTRY_30.map((agent) => {
           const b = behaviors[agent.role];
-          if (!b) return null;
           return (
             <AgentCharacter
               key={agent.role}
@@ -341,21 +380,13 @@ export function OfficeSceneCanvas({ events, onSelectAgent }: Props) {
               name={agent.name}
               title={agent.title}
               department={agent.dept}
-              state={b.state}
-              currentPos={b.currentPos}
-              facingTarget={b.facingTarget}
-              message={b.message}
+              state={b?.state ?? 'idle'}
+              currentPos={b?.currentPos ?? agent.pos}
+              facingTarget={b?.targetPos}
+              message={b?.message}
             />
           );
         })}
-
-        <OrbitControls
-          ref={controlsRef}
-          maxPolarAngle={Math.PI / 2 - 0.05}
-          minDistance={6}
-          maxDistance={65}
-          target={[0, 0, 0]}
-        />
       </Canvas>
     </div>
   );

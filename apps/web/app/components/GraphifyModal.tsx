@@ -319,6 +319,8 @@ export function GraphifyModal({
                   border: '1px solid #d1d5db',
                   fontSize: 12,
                   width: 260,
+                  color: '#111827',
+                  background: '#ffffff',
                 }}
               />
             </div>
@@ -495,7 +497,7 @@ export function GraphifyModal({
                   Chief Orchestrator (CEO)
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>
-                  {hierarchy?.chiefOrchestrator.name || 'Budi'} · Executive Orchestrator
+                  {hierarchy?.chiefOrchestrator.name || 'Rendy'} · Executive Orchestrator
                 </div>
                 <p style={{ margin: '6px 0 0', fontSize: 13, color: '#c7d2fe' }}>
                   Goal Proyek: &quot;{hierarchy?.projectGoal}&quot;

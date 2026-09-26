@@ -8,6 +8,7 @@ import { ArtifactViewerModal } from './components/ArtifactViewerModal';
 import { CustomerFeedbackModal } from './components/CustomerFeedbackModal';
 import { LogViewerModal } from './components/workspace/LogViewerModal';
 import { GraphifyModal } from './components/GraphifyModal';
+import { SplashScreen } from './components/SplashScreen';
 import { useProjectWebSocket } from '../hooks/useProjectWebSocket';
 import { apiFetch } from '../lib/api';
 
@@ -55,6 +56,7 @@ export default function HomePage() {
   const [showLogViewer, setShowLogViewer] = useState(false);
   const [showGraphify, setShowGraphify] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   async function handleExport() {
     if (!selectedProjectId) return;
@@ -93,26 +95,57 @@ export default function HomePage() {
   const { events, connected } = useProjectWebSocket(selectedProjectId);
 
   const loadProjects = useCallback(async () => {
-    const data = await apiFetch<Project[]>('/api/projects');
-    setProjects(data);
+    try {
+      const data = await apiFetch<Project[]>('/api/projects');
+      setProjects(data);
+    } catch (err) {
+      console.warn('Could not load projects (server may still be starting):', err);
+    }
   }, []);
 
   const loadProject = useCallback(async (id: string) => {
-    const data = await apiFetch<Project>(`/api/projects/${id}`);
-    setProject(data);
+    try {
+      const data = await apiFetch<Project>(`/api/projects/${id}`);
+      setProject(data);
+    } catch (err) {
+      console.warn('Could not load project:', err);
+    }
   }, []);
 
   const loadApprovals = useCallback(async (id: string) => {
-    const data = await apiFetch<Approval[]>(`/api/approvals?projectId=${id}`);
-    setApprovals(data);
+    try {
+      const data = await apiFetch<Approval[]>(`/api/approvals?projectId=${id}`);
+      setApprovals(data);
+    } catch (err) {
+      console.warn('Could not load approvals:', err);
+    }
   }, []);
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
+  // URL query parameter support (?projectId=...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get('projectId');
+    if (pid) {
+      setSelectedProjectId(pid);
+    }
+  }, []);
+
+  // Sync on project switch, incoming websocket event, or window focus
   useEffect(() => {
     if (!selectedProjectId) return;
     loadProject(selectedProjectId);
     loadApprovals(selectedProjectId);
+
+    const onFocus = () => {
+      loadProject(selectedProjectId);
+      loadApprovals(selectedProjectId);
+    };
+
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [selectedProjectId, events, loadProject, loadApprovals]);
 
   async function handleStart() {
@@ -167,88 +200,21 @@ export default function HomePage() {
 
   return (
     <>
-      {/* Project switcher floating button */}
-      <div style={{
-        position: 'fixed', top: 12, left: 12, zIndex: 100,
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <button
-          onClick={() => setShowProjectList((v) => !v)}
-          style={{
-            padding: '5px 12px', borderRadius: 99,
-            border: '1px solid var(--line-strong)',
-            background: 'var(--panel)', backdropFilter: 'blur(8px)',
-            color: 'var(--text)', fontSize: 11, fontWeight: 700,
-            cursor: 'pointer', boxShadow: 'var(--shadow)',
-          }}
-        >
-          {project ? project.name : 'Pilih Proyek'}
-        </button>
-        <button
-          onClick={() => setShowFeedbackModal(true)}
-          style={{
-            padding: '5px 12px', borderRadius: 99,
-            border: '1px solid var(--line)',
-            background: 'var(--panel)', backdropFilter: 'blur(8px)',
-            color: 'var(--muted)', fontSize: 11, cursor: 'pointer',
-          }}
-        >
-          Feedback
-        </button>
-        <button
-          onClick={() => setShowLogViewer(true)}
-          style={{
-            padding: '5px 12px', borderRadius: 99,
-            border: '1px solid var(--line)',
-            background: 'var(--panel)', backdropFilter: 'blur(8px)',
-            color: 'var(--muted)', fontSize: 11, cursor: 'pointer',
-          }}
-        >
-          📜 Logs
-        </button>
-        {selectedProjectId && (
-          <button
-            onClick={() => setShowGraphify(true)}
-            style={{
-              padding: '5px 12px', borderRadius: 99,
-              border: '1px solid #c7d2fe',
-              background: '#eff6ff',
-              color: '#3b82f6', fontSize: 11,
-              cursor: 'pointer',
-              fontWeight: 700,
-            }}
-          >
-            📊 Graphify
-          </button>
-        )}
-        {selectedProjectId && (
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            style={{
-              padding: '5px 12px', borderRadius: 99,
-              border: '1px solid var(--line)',
-              background: 'var(--panel)', backdropFilter: 'blur(8px)',
-              color: exporting ? 'var(--faint)' : 'var(--ok)', fontSize: 11,
-              cursor: exporting ? 'default' : 'pointer',
-              fontWeight: 700,
-            }}
-          >
-            {exporting ? 'Exporting...' : '📁 Export'}
-          </button>
-        )}
-      </div>
+      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
 
       {/* Project List Popover */}
       {showProjectList && (
         <div
           style={{
-            position: 'fixed', top: 48, left: 12, zIndex: 200,
-            background: 'var(--panel-solid)', border: '1px solid var(--line)',
-            borderRadius: 12, padding: 8, minWidth: 220,
-            boxShadow: 'var(--shadow-lg)',
+            position: 'fixed', top: 56, left: 16, zIndex: 200,
+            background: 'var(--panel-solid)', border: '1px solid var(--line-strong)',
+            borderRadius: 12, padding: 8, minWidth: 240,
+            boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(16px)',
           }}
         >
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', padding: '4px 8px', textTransform: 'uppercase' }}>
+            Daftar Proyek
+          </div>
           {projects.map((p) => (
             <button
               key={p.id}
@@ -256,8 +222,8 @@ export default function HomePage() {
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
                 padding: '7px 10px', borderRadius: 8, border: 'none',
-                background: selectedProjectId === p.id ? 'var(--line)' : 'transparent',
-                cursor: 'pointer', fontSize: 12, color: 'var(--text)',
+                background: selectedProjectId === p.id ? 'rgba(129, 140, 248, 0.15)' : 'transparent',
+                cursor: 'pointer', fontSize: 12, color: selectedProjectId === p.id ? '#818cf8' : 'var(--text)',
                 fontWeight: selectedProjectId === p.id ? 700 : 400,
               }}
             >
@@ -329,6 +295,12 @@ export default function HomePage() {
         starting={starting}
         onSelectAgent={setInspectedAgentId}
         onOpenGraphify={() => setShowGraphify(true)}
+        onOpenProjectList={() => setShowProjectList((v) => !v)}
+        onOpenFeedback={() => setShowFeedbackModal(true)}
+        onOpenLogs={() => setShowLogViewer(true)}
+        onExport={handleExport}
+        exporting={exporting}
+        onOpenArtifact={(taskId, taskTitle) => setArtifactView({ taskId, taskTitle })}
       >
         <div style={{ textAlign: 'center', color: 'var(--faint)', fontSize: 13 }}>
           Pilih atau buat proyek untuk memulai.

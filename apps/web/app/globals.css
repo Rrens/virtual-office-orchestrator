@@ -1,36 +1,43 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #efeae3;
-  --panel: rgba(255, 255, 255, 0.90);
-  --panel-solid: #ffffff;
-  --line: #e6dfd5;
-  --line-strong: #d6cdc0;
-  --text: #2b2a28;
-  --muted: #6f6a62;
-  --faint: #9a938a;
-  --feed-text: #3d3a36;
+  /* Dark Obsidian Command Center Palette */
+  --bg: #0b0f19;
+  --bg-subtle: #080c14;
+  --panel: rgba(15, 23, 42, 0.80);
+  --panel-solid: #0f172a;
+  --panel-glass: rgba(30, 41, 59, 0.70);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --line-glow: rgba(56, 189, 248, 0.3);
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --feed-text: #e2e8f0;
 
   /* Status Colors */
-  --ok: #2f9a6d;
-  --ok-active: #23a55f;
-  --warn: #c98a00;
-  --warn-bg: #fff4d6;
-  --warn-border: #f0d58a;
-  --warn-text: #7a5800;
-  --bad: #d64545;
-  --bad-bg: #fde6e6;
-  --bad-border: #f1b3b3;
-  --bad-text: #8f2323;
+  --ok: #10b981;
+  --ok-glow: rgba(16, 185, 129, 0.25);
+  --warn: #f59e0b;
+  --warn-bg: rgba(245, 158, 11, 0.15);
+  --warn-border: rgba(245, 158, 11, 0.35);
+  --warn-text: #fbbf24;
+  --bad: #f43f5e;
+  --bad-bg: rgba(244, 63, 94, 0.15);
+  --bad-border: rgba(244, 63, 94, 0.35);
+  --bad-text: #fb7185;
 
-  /* Agent Role Colors */
-  --pingot: #3f6fd1;
-  --zaki: #2f9a6d;
-  --lulu: #d9772f;
-  --risko: #7a5cc4;
+  /* Neon Department Accents */
+  --pingot: #818cf8;
+  --zaki: #06b6d4;
+  --lulu: #f43f5e;
+  --risko: #a855f7;
+  --dian: #f59e0b;
+  --fajar: #10b981;
 
-  --shadow: 0 6px 24px rgba(60, 45, 25, 0.08);
-  --shadow-lg: 0 10px 28px rgba(60, 45, 25, 0.14);
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.36);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.50);
+  --shadow-neon: 0 0 20px rgba(56, 189, 248, 0.2);
 }
 
 * {
@@ -55,21 +62,21 @@ body {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-/* Pill Chip */
+/* Dark Pill Chip */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 1px 8px;
+  padding: 2px 8px;
   border-radius: 99px;
   font-size: 10.5px;
   font-weight: 600;
-  border: 1px solid var(--line-strong);
-  background: #ffffff;
+  border: 1px solid var(--line);
+  background: rgba(30, 41, 59, 0.6);
   color: var(--muted);
   line-height: 1.6;
 }
@@ -83,15 +90,16 @@ body {
 /* Speech Bubble in 3D scene */
 .speech-bubble {
   position: relative;
-  background: #ffffff;
-  border: 1px solid #eadfce;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
-  padding: 6px 10px;
+  padding: 6px 12px;
   font-size: 11.5px;
   color: var(--text);
-  box-shadow: 0 4px 14px rgba(60, 45, 25, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
   pointer-events: none;
+  backdrop-filter: blur(8px);
 }
 
 .speech-bubble::after {
@@ -102,7 +110,7 @@ body {
   transform: translateX(-50%);
   border-width: 6px 6px 0;
   border-style: solid;
-  border-color: #ffffff transparent;
+  border-color: rgba(15, 23, 42, 0.92) transparent;
   display: block;
   width: 0;
 }
@@ -117,14 +125,33 @@ body {
   border-color: var(--warn-bg) transparent;
 }
 
-/* Live Dot Pulse */
+/* Live Dot Pulse with Neon Glow */
 @keyframes live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 6px var(--ok)); }
+  50% { opacity: 0.4; transform: scale(0.9); filter: none; }
 }
 
 .live-dot {
   animation: live-pulse 2s infinite ease-in-out;
+}
+
+/* Running Marquee Text Animation */
+@keyframes marquee-scroll {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.marquee-box {
+  overflow: hidden;
+  white-space: nowrap;
+  width: 100%;
+  position: relative;
+}
+
+.marquee-running {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee-scroll 6s linear infinite;
 }
 
 /* Feed Entrance Animation */
@@ -141,10 +168,11 @@ body {
 
 .feed-item-new {
   animation: feed-in 0.25s ease-out forwards;
-  background-color: #fbf6ec;
+  background-color: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.25) !important;
 }
 
-/* Custom Scrollbar */
+/* Custom Sleek Dark Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -153,9 +181,16 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d6cdc0;
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #b8ad9e;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Responsive UI Utilities */
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
 }

@@ -25,8 +25,9 @@ export async function createTask(dto: CreateTaskDto) {
     });
 
     if (dependencies.length > 0) {
+      const uniqueDeps = Array.from(new Set(dependencies));
       await tx.taskDependency.createMany({
-        data: dependencies.map((depId) => ({
+        data: uniqueDeps.map((depId) => ({
           taskId: task.id,
           dependsOnTaskId: depId,
         })),
