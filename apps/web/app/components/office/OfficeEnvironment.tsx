@@ -81,11 +81,11 @@ export function OfficeEnvironment() {
       metalness: 0.4,
     }),
     glassDoorClear: new THREE.MeshStandardMaterial({
-      color: '#e0f2fe',
-      opacity: 0.35,
+      color: '#f0f9ff',
+      opacity: 0.55,
       transparent: true,
-      roughness: 0.05,
-      metalness: 0.5,
+      roughness: 0.02,
+      metalness: 0.25,
     }),
     railingGlass: new THREE.MeshStandardMaterial({
       color: '#bae6fd',
@@ -459,28 +459,81 @@ export function OfficeEnvironment() {
       {/* 🚪 FRONT ENTRANCE AUTOMATIC SLIDING GLASS DOORS (z = 18)       */}
       {/* ============================================================== */}
       <group position={[0, 0, 18]}>
-        {/* Outer Door Metal Frame */}
-        <mesh position={[0, 2.0, 0]} material={mats.beamSteelBlack}>
-          <boxGeometry args={[6.4, 4.0, 0.2]} />
+        {/* Slender Black Structural Frame with Open Portal Center */}
+        {/* Left Side Frame Pillar */}
+        <mesh position={[-3.15, 2.0, 0]} material={mats.beamSteelBlack}>
+          <boxGeometry args={[0.2, 4.0, 0.15]} />
         </mesh>
-        {/* Glass Transom above doors */}
-        <mesh position={[0, 3.1, 0]} material={mats.glassDoorClear}>
-          <planeGeometry args={[5.8, 1.4]} />
+        {/* Right Side Frame Pillar */}
+        <mesh position={[3.15, 2.0, 0]} material={mats.beamSteelBlack}>
+          <boxGeometry args={[0.2, 4.0, 0.15]} />
         </mesh>
-        {/* Double Sliding Glass Doors */}
-        <mesh position={[-1.4, 1.4, 0.02]} material={mats.glassDoorClear}>
-          <boxGeometry args={[2.6, 2.6, 0.05]} />
+        {/* Top Header Girder */}
+        <mesh position={[0, 3.9, 0]} material={mats.beamSteelBlack}>
+          <boxGeometry args={[6.5, 0.2, 0.15]} />
         </mesh>
-        <mesh position={[1.4, 1.4, 0.02]} material={mats.glassDoorClear}>
-          <boxGeometry args={[2.6, 2.6, 0.05]} />
+        {/* Middle Horizontal Transom Rail */}
+        <mesh position={[0, 2.8, 0]} material={mats.beamSteelBlack}>
+          <boxGeometry args={[6.3, 0.08, 0.12]} />
         </mesh>
-        {/* Stainless Steel Vertical Pull Handles */}
-        <mesh position={[-0.2, 1.4, 0.07]} material={mats.handrailChrome}>
-          <cylinderGeometry args={[0.02, 0.02, 1.2, 8]} />
+        {/* Center Guide Divider Post */}
+        <mesh position={[0, 1.4, 0]} material={mats.beamSteelBlack}>
+          <boxGeometry args={[0.06, 2.8, 0.1]} />
         </mesh>
-        <mesh position={[0.2, 1.4, 0.07]} material={mats.handrailChrome}>
-          <cylinderGeometry args={[0.02, 0.02, 1.2, 8]} />
+
+        {/* Semi-Transparent Glass Transom Window (Above Doors) */}
+        <mesh position={[0, 3.35, 0]} material={mats.glassDoorClear}>
+          <planeGeometry args={[6.1, 1.0]} />
         </mesh>
+
+        {/* Double Semi-Transparent Sliding Glass Doors */}
+        {/* Left Glass Door Leaf */}
+        <group position={[-1.5, 1.4, 0]}>
+          <mesh material={mats.glassDoorClear}>
+            <boxGeometry args={[2.9, 2.7, 0.04]} />
+          </mesh>
+          {/* Subtle Dark Aluminium Perimeter Sash */}
+          <mesh position={[0, 1.33, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[2.9, 0.04, 0.05]} />
+          </mesh>
+          <mesh position={[0, -1.33, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[2.9, 0.04, 0.05]} />
+          </mesh>
+          <mesh position={[-1.43, 0, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[0.04, 2.7, 0.05]} />
+          </mesh>
+          <mesh position={[1.43, 0, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[0.04, 2.7, 0.05]} />
+          </mesh>
+          {/* Stainless Steel Vertical Handle */}
+          <mesh position={[1.25, 0, 0.06]} material={mats.handrailChrome}>
+            <cylinderGeometry args={[0.018, 0.018, 1.2, 12]} />
+          </mesh>
+        </group>
+
+        {/* Right Glass Door Leaf */}
+        <group position={[1.5, 1.4, 0]}>
+          <mesh material={mats.glassDoorClear}>
+            <boxGeometry args={[2.9, 2.7, 0.04]} />
+          </mesh>
+          {/* Subtle Dark Aluminium Perimeter Sash */}
+          <mesh position={[0, 1.33, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[2.9, 0.04, 0.05]} />
+          </mesh>
+          <mesh position={[0, -1.33, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[2.9, 0.04, 0.05]} />
+          </mesh>
+          <mesh position={[-1.43, 0, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[0.04, 2.7, 0.05]} />
+          </mesh>
+          <mesh position={[1.43, 0, 0]} material={mats.beamSteelBlack}>
+            <boxGeometry args={[0.04, 2.7, 0.05]} />
+          </mesh>
+          {/* Stainless Steel Vertical Handle */}
+          <mesh position={[-1.25, 0, 0.06]} material={mats.handrailChrome}>
+            <cylinderGeometry args={[0.018, 0.018, 1.2, 12]} />
+          </mesh>
+        </group>
       </group>
 
       {/* ============================================================== */}
