@@ -16,7 +16,8 @@ interface AgentCharacterProps {
   currentPos: [number, number, number];
   facingTarget?: [number, number, number];
   message?: string;
-  distance?: number; // for LOD
+  distance?: number;
+  onClick?: (role: string) => void;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -55,6 +56,7 @@ export function AgentCharacter({
   facingTarget,
   message,
   distance = 0,
+  onClick,
 }: AgentCharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const headRef = useRef<THREE.Group>(null);
@@ -225,7 +227,14 @@ export function AgentCharacter({
   // LOD DOT
   if (LOD === 'dot') {
     return (
-      <group ref={groupRef} position={currentPos}>
+      <group
+        ref={groupRef}
+        position={currentPos}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick?.(role);
+        }}
+      >
         <mesh>
           <sphereGeometry args={[0.18, 12, 12]} />
           <meshStandardMaterial
@@ -251,7 +260,14 @@ export function AgentCharacter({
   // LOD MEDIUM
   if (LOD === 'medium') {
     return (
-      <group ref={groupRef} position={currentPos}>
+      <group
+        ref={groupRef}
+        position={currentPos}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick?.(role);
+        }}
+      >
         <mesh position={[0, 0.55, 0]} material={shirt}>
           <capsuleGeometry args={[0.22, 0.6, 4, 8]} />
         </mesh>
@@ -265,7 +281,14 @@ export function AgentCharacter({
 
   // LOD FULL
   return (
-    <group ref={groupRef} position={currentPos}>
+    <group
+      ref={groupRef}
+      position={currentPos}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.(role);
+      }}
+    >
       {/* Legs */}
       <group ref={leftLegRef} position={[-0.14, 0.28, 0]}>
         <mesh material={pants}><capsuleGeometry args={[0.09, 0.52, 4, 8]} /></mesh>

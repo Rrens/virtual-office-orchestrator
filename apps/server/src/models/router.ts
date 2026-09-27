@@ -11,12 +11,22 @@ const COMPLEXITY_TIER: Record<Complexity, string> = {
   high: 'tier3_cloud',
 };
 
-const HIGH_RISK_ROLES = new Set([
-  'security-engineer',
-  'penetration-tester',
-  'devops',
+// Roles requiring strong reasoning, code correctness, or architectural planning
+const TECHNICAL_ROLES = new Set([
   'orchestrator',
   'business-strategist',
+  'backend-engineer',
+  'frontend-engineer',
+  'mobile-engineer',
+  'devops',
+  'qa-engineer',
+  'security-engineer',
+  'penetration-tester',
+  'performance-engineer',
+  'ai-engineer',
+  'data-engineer',
+  'ui-ux-designer',
+  'design-system-designer',
 ]);
 
 export class ModelRouter {
@@ -29,21 +39,25 @@ export class ModelRouter {
     this.providers.set('tier3_cloud', new CloudFallbackProvider());
   }
 
+  /**
+   * Routing rules:
+   * - Technical / planning / code / security roles  -> 9Router (tier2)
+   * - Non-technical roles (marketing, sales, cs, operations, content, general analyst) -> Ollama (tier1)
+   * - Cloud (tier3) is reserved for explicit high-stakes tasks when API keys are present
+   */
   selectTier(agentRole: string, complexity: Complexity = 'medium'): string {
     const hasNineRouter = Boolean(process.env.NINEROUTER_API_KEY);
     const hasCloud = Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
 
-    if (HIGH_RISK_ROLES.has(agentRole)) {
-      if (hasCloud) return 'tier3_cloud';
+    if (complexity === 'high' && hasCloud) return 'tier3_cloud';
+
+    if (TECHNICAL_ROLES.has(agentRole)) {
       if (hasNineRouter) return 'tier2_9router';
+      if (hasCloud) return 'tier3_cloud';
       return 'tier1_ollama';
     }
 
-    if (complexity === 'high' && hasCloud) return 'tier3_cloud';
-    if (complexity === 'high' && hasNineRouter) return 'tier2_9router';
-    if (complexity === 'medium' && hasNineRouter) return 'tier2_9router';
-
-    // Default: prefer Ollama locally
+    // Default: prefer Ollama locally for non-technical roles
     return 'tier1_ollama';
   }
 

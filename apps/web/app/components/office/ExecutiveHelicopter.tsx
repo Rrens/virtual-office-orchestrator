@@ -4,18 +4,71 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [number, number, number] }) {
+interface Props {
+  position?: [number, number, number];
+  virtualHours?: number;
+  virtualMinutes?: number;
+}
+
+export function ExecutiveHelicopter({ position = [0, 0, 0], virtualHours = 12, virtualMinutes = 0 }: Props) {
+  const rootGroupRef = useRef<THREE.Group>(null);
   const mainRotorRef = useRef<THREE.Group>(null);
   const tailRotorRef = useRef<THREE.Group>(null);
   const beaconRef = useRef<THREE.PointLight>(null);
 
+  // Time-in-minutes of the virtual day (0..1440)
+  const currentVirtualMinutes = virtualHours * 60 + virtualMinutes;
+  // Landing window: 07:30 (450m) to 08:00 (480m)
+  // Parked window: 08:00 (480m) to 17:00 (1020m)
+  // Takeoff window: 17:00 (1020m) to 17:30 (1050m)
+  // Away window: 17:30 to 07:30 next morning
+
   useFrame((state, delta) => {
-    // Continuous smooth rotor spinning
+    const isAway = currentVirtualMinutes < 450 || currentVirtualMinutes > 1050;
+    const isLanding = currentVirtualMinutes >= 450 && currentVirtualMinutes < 480;
+    const isParked = currentVirtualMinutes >= 480 && currentVirtualMinutes <= 1020;
+    const isTakingOff = currentVirtualMinutes > 1020 && currentVirtualMinutes <= 1050;
+
+    if (rootGroupRef.current) {
+      if (isAway) {
+        rootGroupRef.current.position.set(0, -999, 0); // Hide completely
+        rootGroupRef.current.visible = false;
+        return;
+      }
+
+      rootGroupRef.current.visible = true;
+
+      if (isParked) {
+        // Firmly grounded on helipad
+        rootGroupRef.current.position.set(position[0], position[1], position[2]);
+        rootGroupRef.current.rotation.set(0, 0, 0);
+      } else if (isLanding) {
+        // Inbound flight from distance + descent
+        const progress = (currentVirtualMinutes - 450) / 30; // 0 to 1
+        const invProgress = 1 - progress;
+        const flightX = position[0] + invProgress * 40;
+        const flightY = position[1] + invProgress * 25 + Math.sin(state.clock.getElapsedTime() * 2) * 0.3;
+        const flightZ = position[2] + invProgress * 30;
+        rootGroupRef.current.position.set(flightX, flightY, flightZ);
+        rootGroupRef.current.rotation.set(invProgress * 0.1, 0, -invProgress * 0.08);
+      } else if (isTakingOff) {
+        // Outbound ascent and bank away
+        const progress = (currentVirtualMinutes - 1020) / 30; // 0 to 1
+        const flightX = position[0] - progress * 45;
+        const flightY = position[1] + progress * 30 + Math.sin(state.clock.getElapsedTime() * 2) * 0.3;
+        const flightZ = position[2] - progress * 35;
+        rootGroupRef.current.position.set(flightX, flightY, flightZ);
+        rootGroupRef.current.rotation.set(progress * 0.15, 0.4, progress * 0.12);
+      }
+    }
+
+    // Rotor spinning speed based on flight status
+    const rotorSpeed = isParked ? 3 : 25;
     if (mainRotorRef.current) {
-      mainRotorRef.current.rotation.y += delta * 15;
+      mainRotorRef.current.rotation.y += delta * rotorSpeed;
     }
     if (tailRotorRef.current) {
-      tailRotorRef.current.rotation.x += delta * 25;
+      tailRotorRef.current.rotation.x += delta * (rotorSpeed * 1.5);
     }
     // Pulsing strobe aviation beacon on tail
     if (beaconRef.current) {
@@ -25,7 +78,7 @@ export function ExecutiveHelicopter({ position = [0, 0, 0] }: { position?: [numb
   });
 
   return (
-    <group position={position}>
+    <group ref={rootGroupRef} position={position}>
       {/* ============================================================== */}
       {/* 🚁 1. LANDING SKIDS (Pipa Penyangga Pendaratan)                */}
       {/* ============================================================== */}

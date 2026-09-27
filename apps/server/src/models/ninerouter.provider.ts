@@ -20,12 +20,38 @@ export class NineRouterProvider implements ModelProvider {
 
 	async complete(request: ModelRequest): Promise<ModelResponse> {
 		const startTime = Date.now();
-		// User requirement:
-		// 1. Code / engineer roles -> 9Router-3-Specialized-Code
-		// 2. General / non-engineer roles -> 9Router-4-Lightweight-Response
-		const model = request.agentRole?.includes('engineer') || request.agentRole?.includes('devops')
-			? '9Router-3-Specialized-Code'
-			: '9Router-4-Lightweight-Response';
+		const role = request.agentRole ?? '';
+
+		// If caller explicitly specified a 9Router model, use it directly
+		const VALID_9ROUTER_MODELS = [
+			'9Router-1-Primary-Heavy',
+			'9Router-2-High-Performance',
+			'9Router-3-Specialized-Code',
+			'9Router-4-Lightweight-Response',
+			'9Router-5-Free-n-Emergency',
+		];
+		let model: string;
+		if (request.model && VALID_9ROUTER_MODELS.includes(request.model)) {
+			model = request.model;
+		} else {
+			const isPlannerOrSecurity = ['orchestrator', 'business-strategist', 'security-engineer', 'penetration-tester'].includes(role);
+			const isCodeOrDesign =
+				role.includes('engineer') ||
+				role.includes('devops') ||
+				role.includes('qa') ||
+				role.includes('designer') ||
+				role.includes('developer');
+
+			// User decision:
+			// - Planner / high-stakes reasoning -> Combo 2 (9Router-2-High-Performance)
+			// - Code / engineering / QA / design -> Combo 3 (9Router-3-Specialized-Code)
+			// - Others -> Combo 4 (9Router-4-Lightweight-Response)
+			model = isPlannerOrSecurity
+				? '9Router-2-High-Performance'
+				: isCodeOrDesign
+				? '9Router-3-Specialized-Code'
+				: '9Router-4-Lightweight-Response';
+		}
 
 		// Timeout controller (90 seconds) to allow comprehensive code generation
 		const controller = new AbortController();

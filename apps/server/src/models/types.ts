@@ -11,6 +11,7 @@ export interface ModelRequest {
   maxTokens?: number;
   taskId?: string;
   agentRole?: string;
+  model?: string;
 }
 
 export interface ModelResponse {

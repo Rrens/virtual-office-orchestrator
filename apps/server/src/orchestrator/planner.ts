@@ -37,7 +37,7 @@ function normalizeRole(role: string): AgentRole {
 const ORCHESTRATOR_SYSTEM_PROMPT = `You are the Chief Orchestrator of an AI Virtual Company.
 Your job is to decompose high-level business goals into a structured Directed Acyclic Graph (DAG) of actionable tasks.
 
-Available Agent Roles:
+Available Agent Roles (EXACT IDs — never invent new roles or department names):
 - Executive: orchestrator, business-strategist
 - Product: product-manager, business-analyst, ux-researcher, product-analyst
 - Design: ui-ux-designer, design-system-designer, brand-designer
@@ -50,7 +50,7 @@ Available Agent Roles:
 
 RULES:
 1. Decompose the goal into 4 to 8 concrete tasks.
-2. Select ONLY the agents relevant to this specific goal.
+2. Select ONLY agents from the EXACT list above. NEVER use generic labels like "engineering", "developer", "designer", or "full-stack-engineer".
 3. Every task must declare its dependencies (which tasks must complete first). Independent tasks can run parallel.
 4. The graph MUST be a valid DAG (no cycles).
 5. Output strict valid JSON ONLY, no markdown, no backticks, no comments.
@@ -175,8 +175,8 @@ export class GoalPlanner {
     const prompt = `Goal: "${goal}"\nGenerate an execution plan for this goal. Output pure JSON matching the schema.`;
 
     try {
-      const response = await modelRouter.routeByTier('tier1_ollama', {
-        maxTokens: 1024,
+      const response = await modelRouter.routeByTier('tier2_9router', {
+        maxTokens: 2048,
         messages: [
           { role: 'system', content: ORCHESTRATOR_SYSTEM_PROMPT },
           { role: 'user', content: prompt },

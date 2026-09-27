@@ -79,7 +79,8 @@ export class ToolGateway {
       toolCallId,
       toolName,
       agentInstanceId: context.agentInstanceId,
-    });
+      inputSummary: JSON.stringify(input).slice(0, 300),
+    } as any);
 
     try {
       const output = await Promise.race([
@@ -109,7 +110,8 @@ export class ToolGateway {
         agentInstanceId: context.agentInstanceId,
         durationMs: output.durationMs,
         errorMessage: output.errorMessage,
-      });
+        outputSummary: JSON.stringify(output.data ?? {}).slice(0, 300),
+      } as any);
 
       return { allowed: true, toolCallId, output };
     } catch (err) {

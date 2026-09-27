@@ -68,8 +68,10 @@ export async function startTaskConsumer(): Promise<void> {
 }
 
 async function scanAndAssignQueuedTasks(): Promise<void> {
+  // Pick up any task that is still QUEUED, even if an old worker crashed after
+  // assigning an agent but before transitioning it to ASSIGNED/RUNNING.
   const queuedTasks = await prisma.task.findMany({
-    where: { status: 'QUEUED', assignedAgentId: null },
+    where: { status: 'QUEUED' },
     include: { workflowExecution: true },
     take: 20,
   });
@@ -88,24 +90,24 @@ async function scanAndAssignQueuedTasks(): Promise<void> {
     }
   }
 
-  // Recovery: tasks stuck in ASSIGNED because a previous worker died/restarted before completion
+  // Recovery: tasks stuck in ASSIGNED or RUNNING because a previous worker died/restarted before completion
   const stuckThresholdMs = 2 * 60 * 1000;
-  const stuckAssignedTasks = await prisma.task.findMany({
+  const stuckActiveTasks = await prisma.task.findMany({
     where: {
-      status: 'ASSIGNED',
+      status: { in: ['ASSIGNED', 'RUNNING'] },
       updatedAt: { lt: new Date(Date.now() - stuckThresholdMs) },
     },
     include: { workflowExecution: true },
     take: 20,
   });
 
-  if (stuckAssignedTasks.length > 0) {
-    logger.info('TaskScanner', `Found ${stuckAssignedTasks.length} zombie ASSIGNED task(s) after restart, resetting to QUEUED`, {
-      tasks: stuckAssignedTasks.map((t) => ({ id: t.id, title: t.title, role: t.agentRole })),
+  if (stuckActiveTasks.length > 0) {
+    logger.info('TaskScanner', `Found ${stuckActiveTasks.length} zombie task(s) in ASSIGNED/RUNNING after restart, resetting to QUEUED`, {
+      tasks: stuckActiveTasks.map((t) => ({ id: t.id, title: t.title, role: t.agentRole, status: t.status })),
     });
   }
 
-  for (const task of stuckAssignedTasks) {
+  for (const task of stuckActiveTasks) {
     try {
       // Mark any dangling running agentRun as failed
       await prisma.agentRun.updateMany({
@@ -135,7 +137,7 @@ async function scanAndAssignQueuedTasks(): Promise<void> {
 
       await handleTaskQueued({ taskId: task.id });
     } catch (err) {
-      logger.warn('TaskScanner', `Failed to recover stuck ASSIGNED task ${task.id}: ${err instanceof Error ? err.message : err}`);
+      logger.warn('TaskScanner', `Failed to recover stuck task ${task.id}: ${err instanceof Error ? err.message : err}`);
     }
   }
 }
@@ -297,7 +299,7 @@ async function executeTask(task: any, agent: any): Promise<void> {
   // Determine human-readable model name for logs
   const modelName = preferredModel?.modelName || (
     selectedTier === 'tier1_ollama'
-      ? (task.agentRole?.includes('engineer') ? 'qwen2.5-coder:3b' : 'qwen3.5:4b')
+      ? (task.agentRole?.includes('engineer') ? 'qwen2.5-coder:3b' : 'qwen3:1.7b')
       : selectedTier === 'tier2_9router'
       ? (task.agentRole?.includes('engineer') || task.agentRole?.includes('devops') ? '9Router-3-Specialized-Code' : '9Router-4-Lightweight-Response')
       : 'gpt-4o-mini (Cloud)'
@@ -325,36 +327,49 @@ async function executeTask(task: any, agent: any): Promise<void> {
     const isDesignRole = ['ui-ux-designer', 'design-system-designer', 'brand-designer'].includes(task.agentRole);
 
     const systemPrompt = isCodeRole
-      ? `You are a ${agent.definition.name}. ${agent.definition.persona}
+      ? `You are ${agent.definition.name}. ${agent.definition.persona}
 
-CRITICAL RULES:
-- You MUST output ACTUAL, RUNNABLE code — not descriptions, not explanations.
-- Every expected artifact must be a real file with complete implementation.
-- Use proper file headers with the filename as a comment.
-- Output format: write each file as a fenced code block with the filename above it.
-- Example format:
-  ## src/api/users.ts
-  \`\`\`typescript
-  import express from 'express';
-  // ... full implementation
-  \`\`\`
-- No placeholders like "// implement this later". Write the full implementation.
-- No abstract descriptions. Only working code.`
+PRODUCTION CODE QUALITY RULES:
+- You MUST output ACTUAL, RUNNABLE, PRODUCTION-READY CODE. No descriptions, no placeholders, no "// TODO implement later".
+- Every expected artifact must be a real file with full, robust implementation (TypeScript strict mode, proper error handling, typed parameters, clean imports).
+- Structure file deliverables clearly using standard filenames (e.g. ## src/services/auth.ts followed by code block).
+- Follow clean architecture conventions, RESTful standards, and defensive coding practices.`
       : isDesignRole
-      ? `You are a ${agent.definition.name}. ${agent.definition.persona}
+      ? `You are ${agent.definition.name}. ${agent.definition.persona}
 
-CRITICAL RULES:
-- Output a complete, detailed design specification document.
-- Include: color palette (hex codes), typography (font names, sizes, weights), spacing system, component specs, and wireframe descriptions.
-- For UI components, describe exact layout, dimensions, and interactions.
-- Be specific and actionable — a developer must be able to implement this directly.`
-      : `You are a ${agent.definition.name}. ${agent.definition.persona}
+PRODUCTION DESIGN SPECIFICATION RULES:
+- Output a complete, detailed, production-ready design specification.
+- Include exact design tokens: color hex codes (#0b1324, #6366f1, etc.), typography scale (font sizes, weights), spacing rules (4px/8px grid), responsive breakpoint specs, and Tailwind CSS classes.
+- Describe component props, states (hover, focus, disabled), and accessibility guidelines (WCAG AA contrast).`
+      : `You are ${agent.definition.name}. ${agent.definition.persona}
 
-CRITICAL RULES:
-- Output a complete, detailed, professional document.
-- Be specific with data, metrics, decisions, and recommendations.
-- No vague statements. Every claim must have supporting detail.
-- Format with clear headers, bullet points, and tables where appropriate.`;
+PRODUCTION DELIVERABLE RULES:
+- Output a thorough, highly professional, actionable document for this task.
+- Include structured sections with clear headings, bullet points, metrics/KPIs, and detailed strategy.
+- Avoid generic summaries; provide real, specific, market-ready details.`;
+
+    // Fetch project PRD memory if available to enrich task prompt context
+    let prdContext = '';
+    try {
+      const projectId = task.workflowExecution?.projectId;
+      if (projectId) {
+        const prdMem = await prisma.memoryStore.findUnique({
+          where: {
+            scope_scopeId_key: {
+              scope: 'project',
+              scopeId: projectId,
+              key: 'prd_files',
+            },
+          },
+        });
+        if (prdMem) {
+          const files: Array<{ name: string; content: string }> = JSON.parse(prdMem.value);
+          if (Array.isArray(files) && files.length > 0) {
+            prdContext = files.map((f) => `--- PRD (${f.name}) ---\n${f.content.slice(0, 3000)}`).join('\n\n');
+          }
+        }
+      }
+    } catch {}
 
     const userPrompt = `# Task: ${task.title}
 
@@ -364,10 +379,11 @@ ${task.description}
 ## Expected Output Files
 ${task.outputArtifacts.map((a: string) => `- ${a}`).join('\n')}
 
+${prdContext ? `## Project Context & PRD Specifications\n${prdContext}\n` : ''}
 ## Instructions
 ${isCodeRole
   ? `Write the complete, production-ready implementation for each expected file. Include all imports, error handling, and business logic. Do NOT write pseudocode or descriptions.`
-  : `Write a complete, detailed, professional deliverable for this task.`}
+  : `Write a complete, detailed, professional deliverable for this task based on the project context above.`}
 
 Deliver the full output now.`;
 
@@ -569,6 +585,8 @@ async function handleTaskFailure(task: any, agent: any, agentRunId: string, err:
     });
 
     await agentStateMachine.escalate(agent.id);
+    // Immediately release agent back to idle so it can take other tasks
+    await agentStateMachine.transition(agent.id, 'idle', null);
 
     // PRD §36: pause downstream tasks and diagnose workflow failure
     await workflowEngine.diagnoseAndHandleFailure(task.workflowExecutionId, task.id);

@@ -256,6 +256,11 @@ Output hanya valid JSON, tanpa markdown.`,
 
     await prisma.task.update({ where: { id: taskId }, data: { status: 'COMPLETED' } });
 
+    // Release author agent back to idle so they are never stuck in 'reviewing' state
+    if (task?.assignedAgentId) {
+      await agentStateMachine.complete(task.assignedAgentId);
+    }
+
     await publishEvent({
       eventId: randomUUID(),
       timestamp: new Date().toISOString(),
@@ -281,6 +286,15 @@ Output hanya valid JSON, tanpa markdown.`,
     const newRetry = task.retryCount + 1;
     if (newRetry >= task.maxRetries) {
       await prisma.task.update({ where: { id: taskId }, data: { status: 'FAILED' } });
+
+      if (task.assignedAgentId) {
+        await agentStateMachine.fail(task.assignedAgentId);
+        await prisma.agentInstance.update({
+          where: { id: task.assignedAgentId },
+          data: { currentTaskId: null, status: 'idle' },
+        });
+      }
+
       await publishEvent({
         eventId: randomUUID(),
         timestamp: new Date().toISOString(),
@@ -294,6 +308,10 @@ Output hanya valid JSON, tanpa markdown.`,
         newStatus: 'FAILED',
       });
     } else {
+      if (task.assignedAgentId) {
+        await agentStateMachine.complete(task.assignedAgentId);
+      }
+
       await prisma.task.update({ where: { id: taskId }, data: { status: 'QUEUED', retryCount: newRetry } });
       await publishEvent({
         eventId: randomUUID(),

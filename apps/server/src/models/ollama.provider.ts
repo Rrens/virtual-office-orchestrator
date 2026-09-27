@@ -9,7 +9,7 @@ export class OllamaProvider implements ModelProvider {
 
   constructor(
     baseUrl = process.env.OLLAMA_BASE_URL || 'http://192.168.0.2:11434',
-    defaultModel = process.env.OLLAMA_MODEL_GENERAL || 'qwen3.5:4b',
+    defaultModel = process.env.OLLAMA_MODEL_GENERAL || 'qwen3:1.7b',
     codeModel = process.env.OLLAMA_MODEL_CODE || 'qwen2.5-coder:3b'
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');

@@ -80,6 +80,7 @@ export function WorkspaceLayout({
 }: Props) {
   const [mobileTab, setMobileTab] = useState<'canvas' | 'activity' | 'roadmap'>('canvas');
   const [isMobile, setIsMobile] = useState(false);
+  const [showProjectDetail, setShowProjectDetail] = useState(false);
 
   useEffect(() => {
     function checkMobile() {
@@ -172,6 +173,7 @@ export function WorkspaceLayout({
         onCancel={onCancel}
         starting={starting}
         onOpenProjectList={onOpenProjectList}
+        onOpenProjectDetail={() => setShowProjectDetail(true)}
         onOpenFeedback={onOpenFeedback}
         onOpenLogs={onOpenLogs}
         onOpenGraphify={onOpenGraphify}
@@ -265,6 +267,88 @@ export function WorkspaceLayout({
         projectId={project?.id}
         onSelectAgent={onSelectAgent}
       />
+
+      {/* Project Detail Modal */}
+      {showProjectDetail && project && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setShowProjectDetail(false)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🏢</span>
+                <div>
+                  <h3 className="text-base font-bold text-white">{project.name}</h3>
+                  <p className="text-[10px] text-slate-400 font-mono">ID: {project.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowProjectDetail(false)}
+                className="text-slate-400 hover:text-white text-lg leading-none p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">🎯 Goal / Target Utama</p>
+                <p className="text-white font-semibold text-sm leading-snug">{project.goal || 'Belum ada goal.'}</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Status Workflows</p>
+                  <span className="text-indigo-400 font-bold uppercase">{project.status}</span>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Otonomi Decision</p>
+                  <span className="text-emerald-400 font-bold">Lvl {project.autonomyLevel ?? 3} (Auto)</span>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Token Terpakai</p>
+                  <span className="text-amber-400 font-mono font-bold">{(project.usedTokens ?? 0).toLocaleString()} token</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">📊 Progres Tugas</p>
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="flex-1 bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                    <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+                  </div>
+                  <span className="text-white font-bold font-mono">{completedTasks}/{tasks.length} ({Math.round(progressPercent)}%)</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-3 text-[11px]">
+                  <div className="text-emerald-400 font-medium">✓ Selesai: {completedTasks}</div>
+                  <div className="text-indigo-400 font-medium">⚡ Berjalan: {activeTasks}</div>
+                  <div className="text-rose-400 font-medium">⚠️ Terhambat: {blockedTasks}</div>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">📄 Konteks PRD & Instruksi Proyek</p>
+                <p className="text-slate-300 leading-relaxed font-mono text-[11px] max-h-36 overflow-y-auto whitespace-pre-wrap">
+                  Proyek ini mengeksekusi arsitektur SaaS AI Multi-Tenant OmniRetail AI platform. Semua agent beroperasi secara otonom di bawah instruksi Orchestrator (Pak Joko & Siti) dan QA Lead (Risko).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-slate-800">
+              <button
+                onClick={() => setShowProjectDetail(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

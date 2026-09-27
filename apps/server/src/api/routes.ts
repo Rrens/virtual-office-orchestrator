@@ -355,7 +355,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Create new Agent Definition
   app.post('/api/agents/definitions', async (req, reply) => {
-    const { name, role, persona, modelTier = 'tier1_ollama', tools = [], permissions = [], departmentId } = req.body as {
+    const { name, role, persona, modelTier = 'tier1_ollama', tools = [], permissions = [], departmentId, projectId } = req.body as {
       name: string;
       role: string;
       persona: string;
@@ -363,6 +363,7 @@ export async function registerRoutes(app: FastifyInstance) {
       tools?: string[];
       permissions?: string[];
       departmentId: string;
+      projectId?: string;
     };
 
     if (!name || !role || !departmentId) {
@@ -382,7 +383,26 @@ export async function registerRoutes(app: FastifyInstance) {
       include: { department: true },
     });
 
-    return reply.status(201).send(created);
+    let spawnedInstance = null;
+    const targetProjectId = projectId ?? null;
+    if (targetProjectId) {
+      try {
+        spawnedInstance = await spawnAgentInstance(targetProjectId, role as AgentRole);
+        await publishEvent({
+          eventId: randomUUID(),
+          timestamp: new Date().toISOString(),
+          type: 'agent.created',
+          projectId: targetProjectId,
+          agentInstanceId: spawnedInstance.id,
+          agentRole: role,
+          department: 'custom',
+        } as any);
+      } catch {
+        // spawn silently fails if role/project not valid — definition still created
+      }
+    }
+
+    return reply.status(201).send({ ...created, spawnedInstance });
   });
 
   // Update Agent Definition (Rename, edit persona, change tools, permissions, department)
@@ -425,7 +445,7 @@ export async function registerRoutes(app: FastifyInstance) {
   // Batch LLM Preset Override for all agents
   app.post('/api/agents/models/batch-override', async (req, reply) => {
     const { preset, modelName, tier } = req.body as {
-      preset?: 'local' | 'balanced' | 'max';
+      preset?: 'local' | 'balanced' | 'max' | 'free_combo5';
       modelName?: string;
       tier?: string;
     };
@@ -436,6 +456,9 @@ export async function registerRoutes(app: FastifyInstance) {
     if (preset === 'local') {
       chosenModel = 'qwen2.5-coder:7b';
       chosenTier = 'tier1_ollama';
+    } else if (preset === 'free_combo5') {
+      chosenModel = '9Router-5-Free-n-Emergency';
+      chosenTier = 'tier2_9router';
     } else if (preset === 'balanced') {
       chosenModel = '9Router-3-Specialized-Code';
       chosenTier = 'tier2_9router';
@@ -480,10 +503,11 @@ export async function registerRoutes(app: FastifyInstance) {
       { id: 'qwen2.5-coder:7b', name: 'Qwen 2.5 Coder 7B (Local Balanced)', tier: 'tier1_ollama', cost: 'Free (Local)' },
       { id: 'llama3.1:8b', name: 'Llama 3.1 8B (Local General)', tier: 'tier1_ollama', cost: 'Free (Local)' },
       { id: 'qwen3.5:4b', name: 'Qwen 3.5 4B (Local General)', tier: 'tier1_ollama', cost: 'Free (Local)' },
-      { id: '9Router-3-Specialized-Code', name: '9Router Specialized Code', tier: 'tier2_9router', cost: 'Low' },
-      { id: '9Router-4-Lightweight-Response', name: '9Router Lightweight Response', tier: 'tier2_9router', cost: 'Low' },
-      { id: '9Router-2-High-Performance', name: '9Router High Performance', tier: 'tier2_9router', cost: 'Medium' },
-      { id: '9Router-1-Primary-Heavy', name: '9Router Primary Heavy', tier: 'tier2_9router', cost: 'Medium' },
+      { id: '9Router-1-Primary-Heavy', name: '9Router-1-Primary-Heavy', tier: 'tier2_9router', cost: 'Medium' },
+      { id: '9Router-2-High-Performance', name: '9Router-2-High-Performance', tier: 'tier2_9router', cost: 'Medium' },
+      { id: '9Router-3-Specialized-Code', name: '9Router-3-Specialized-Code', tier: 'tier2_9router', cost: 'Low' },
+      { id: '9Router-4-Lightweight-Response', name: '9Router-4-Lightweight-Response', tier: 'tier2_9router', cost: 'Low' },
+      { id: '9Router-5-Free-n-Emergency', name: '9Router-5-Free-n-Emergency', tier: 'tier2_9router', cost: 'Free' },
       { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (Cloud)', tier: 'tier3_cloud', cost: 'High' },
       { id: 'gpt-4o', name: 'GPT-4o (Cloud)', tier: 'tier3_cloud', cost: 'High' },
     ];
@@ -538,6 +562,89 @@ export async function registerRoutes(app: FastifyInstance) {
     }
 
     return { modelName: null, tier: null };
+  });
+
+  // Get agent live execution runs & tool calls for Spectator Mode
+  app.get('/api/agents/instances/:id/runs', async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    let instance = await prisma.agentInstance.findUnique({
+      where: { id },
+      include: {
+        definition: { include: { department: true } },
+        assignedTasks: { take: 5, orderBy: { updatedAt: 'desc' } },
+      },
+    });
+
+    if (!instance) {
+      const def = await prisma.agentDefinition.findFirst({
+        where: { role: id },
+        include: { department: true },
+      });
+      if (def) {
+        instance = {
+          id,
+          definitionId: def.id,
+          projectId: 'system',
+          status: 'idle',
+          currentTaskId: null,
+          avatarUrl: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          definition: def,
+          assignedTasks: [],
+        } as any;
+      }
+    }
+
+    if (!instance) return reply.status(404).send({ error: 'Agent instance not found' });
+
+    const runs = await prisma.agentRun.findMany({
+      where: { agentInstanceId: instance.id },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        task: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            agentRole: true,
+            artifacts: { take: 3, orderBy: { createdAt: 'desc' } },
+          },
+        },
+        toolCalls: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+
+    return {
+      agent: instance,
+      runs: runs.map((r) => ({
+        id: r.id,
+        taskId: r.taskId,
+        taskTitle: r.task?.title ?? 'Task Executing',
+        taskStatus: r.task?.status ?? 'RUNNING',
+        modelUsed: r.modelUsed,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+        costEstimated: r.costEstimated,
+        durationMs: r.durationMs,
+        status: r.status,
+        errorMessage: r.errorMessage,
+        createdAt: r.createdAt,
+        toolCalls: r.toolCalls.map((tc) => ({
+          id: tc.id,
+          toolName: tc.toolName,
+          inputJson: tc.inputJson,
+          outputJson: tc.outputJson,
+          status: tc.status,
+          durationMs: tc.durationMs,
+          errorMessage: tc.errorMessage,
+        })),
+        outputContent: r.task?.artifacts?.[0]?.content ?? null,
+      })),
+    };
   });
 
   // Override model per agent instance

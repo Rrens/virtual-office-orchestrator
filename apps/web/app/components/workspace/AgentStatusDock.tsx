@@ -142,8 +142,6 @@ export function AgentStatusDock({ agents, projectId, onSelectAgent }: Props) {
 
         <Link
           href={projectId ? `/code?projectId=${projectId}` : '/code'}
-          target="_blank"
-          rel="noopener noreferrer"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -166,8 +164,6 @@ export function AgentStatusDock({ agents, projectId, onSelectAgent }: Props) {
 
         <Link
           href={projectId ? `/kanban?projectId=${projectId}` : '/kanban'}
-          target="_blank"
-          rel="noopener noreferrer"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -190,8 +186,6 @@ export function AgentStatusDock({ agents, projectId, onSelectAgent }: Props) {
 
         <Link
           href={projectId ? `/agents?projectId=${projectId}` : '/agents'}
-          target="_blank"
-          rel="noopener noreferrer"
           style={{
             display: 'inline-flex',
             alignItems: 'center',

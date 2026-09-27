@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../lib/api';
+import { AgentSpectatorModal } from './AgentSpectatorModal';
 
 interface AgentRun {
   id: string;
@@ -64,6 +65,7 @@ export function AgentInspectorModal({ agentId, onClose }: Props) {
   const [savingModel, setSavingModel] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [spectatorOpen, setSpectatorOpen] = useState(false);
 
   useEffect(() => {
     if (!agentId) return;
@@ -136,12 +138,24 @@ export function AgentInspectorModal({ agentId, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-indigo-500/20 bg-slate-900/60">
           <h2 className="font-bold text-white text-base">Agent Inspector & Model Config</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white text-xl leading-none transition-colors"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2">
+            {agent && (
+              <button
+                onClick={() => setSpectatorOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold hover:bg-cyan-500/20 transition-colors cursor-pointer"
+                title="Lihat live eksekusi agent"
+              >
+                <span>👁</span>
+                <span>Live Spectate</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white text-xl leading-none transition-colors"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {loading && (
@@ -312,6 +326,16 @@ export function AgentInspectorModal({ agentId, onClose }: Props) {
           </div>
         )}
       </div>
+
+      {spectatorOpen && agent && (
+        <AgentSpectatorModal
+          agentInstanceId={agent.id}
+          agentRole={agent.definition.role}
+          agentName={agent.definition.name}
+          allEvents={[]}
+          onClose={() => setSpectatorOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -5,22 +5,25 @@ import Link from 'next/link';
 
 interface Props {
   projectId?: string;
-  projectName: string;
-  projectStatus: string;
-  progressPercent: number;
-  totalTasks: number;
-  completedTasks: number;
-  activeTasks: number;
-  blockedTasks: number;
-  usedTokens: number;
-  connected: boolean;
+  projectName?: string;
+  projectStatus?: string;
+  progressPercent?: number;
+  totalTasks?: number;
+  completedTasks?: number;
+  activeTasks?: number;
+  blockedTasks?: number;
+  usedTokens?: number;
+  connected?: boolean;
   workflowStartedAt?: string | null;
+
   onStart?: () => void;
   onPause?: () => void;
   onResume?: () => void;
   onCancel?: () => void;
   starting?: boolean;
+
   onOpenProjectList?: () => void;
+  onOpenProjectDetail?: () => void;
   onOpenFeedback?: () => void;
   onOpenLogs?: () => void;
   onOpenGraphify?: () => void;
@@ -81,7 +84,7 @@ export function WorkspaceHeader({
   totalTasks, completedTasks, activeTasks, blockedTasks,
   usedTokens, connected, workflowStartedAt,
   onStart, onPause, onResume, onCancel, starting,
-  onOpenProjectList, onOpenFeedback, onOpenLogs, onOpenGraphify, onExport, exporting,
+  onOpenProjectList, onOpenProjectDetail, onOpenFeedback, onOpenLogs, onOpenGraphify, onExport, exporting,
 }: Props) {
   return (
     <header style={{
@@ -133,14 +136,36 @@ export function WorkspaceHeader({
             {STATUS_LABELS[projectStatus] ?? projectStatus}
           </span>
         )}
+
+        {onOpenProjectDetail && projectName && (
+          <button
+            onClick={onOpenProjectDetail}
+            title="Lihat detail proyek (Goal, PRD, Status, Token Budget)"
+            style={{
+              padding: '4px 9px',
+              borderRadius: 8,
+              border: '1px solid rgba(99, 102, 241, 0.4)',
+              background: 'rgba(99, 102, 241, 0.1)',
+              color: '#a5b4fc',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>ℹ️</span>
+            <span>Detail</span>
+          </button>
+        )}
       </div>
 
       {/* Center: Command Tool Bar (Code Studio, Kanban, Agent Management, Graphify, Logs, Export, Feedback) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
         <Link
           href={projectId ? `/code?projectId=${projectId}` : '/code'}
-          target="_blank"
-          rel="noopener noreferrer"
           style={{
             padding: '5px 11px',
             borderRadius: 8,
@@ -162,8 +187,6 @@ export function WorkspaceHeader({
         </Link>
         <Link
           href={projectId ? `/kanban?projectId=${projectId}` : '/kanban'}
-          target="_blank"
-          rel="noopener noreferrer"
           style={{
             padding: '5px 11px',
             borderRadius: 8,
@@ -185,8 +208,6 @@ export function WorkspaceHeader({
         </Link>
         <Link
           href={projectId ? `/agents?projectId=${projectId}` : '/agents'}
-          target="_blank"
-          rel="noopener noreferrer"
           style={{
             padding: '5px 11px',
             borderRadius: 8,
@@ -276,8 +297,8 @@ export function WorkspaceHeader({
         <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
           <div style={{
             height: '100%', borderRadius: 99,
-            background: progressPercent >= 100 ? 'var(--ok)' : 'linear-gradient(90deg, var(--pingot), #38bdf8)',
-            width: `${progressPercent}%`,
+            background: (progressPercent ?? 0) >= 100 ? 'var(--ok)' : 'linear-gradient(90deg, var(--pingot), #38bdf8)',
+            width: `${progressPercent ?? 0}%`,
             transition: 'width 0.6s ease',
             boxShadow: '0 0 6px rgba(56, 189, 248, 0.3)',
           }} />
@@ -290,14 +311,14 @@ export function WorkspaceHeader({
           <div className="chip-dot" style={{ backgroundColor: 'var(--ok)' }} />
           {activeTasks} Task Aktif
         </span>
-        {blockedTasks > 0 && (
+        {(blockedTasks ?? 0) > 0 && (
           <span className="chip" style={{ color: 'var(--bad-text)', borderColor: 'var(--bad-border)' }}>
             <div className="chip-dot" style={{ backgroundColor: 'var(--bad)' }} />
             {blockedTasks} blocked
           </span>
         )}
         <span className="chip" style={{ fontFamily: 'monospace' }}>
-          {(usedTokens / 1000).toFixed(1)}k tok
+          {((usedTokens ?? 0) / 1000).toFixed(1)}k tok
         </span>
 
         {/* Action Buttons */}

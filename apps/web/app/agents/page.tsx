@@ -140,7 +140,7 @@ export default function AgentManagementPage() {
     }
   };
 
-  const handleApplyPreset = async (preset: 'local' | 'balanced' | 'max') => {
+  const handleApplyPreset = async (preset: 'local' | 'balanced' | 'max' | 'free_combo5') => {
     setBatchLoading(true);
     try {
       const res = await apiFetch<{ count: number; modelName: string }>(
@@ -204,6 +204,7 @@ export default function AgentManagementPage() {
           modelTier: 'tier1_ollama',
           tools: ['web-scraper', 'bash'],
           permissions: ['autonomous-execution'],
+          ...(activeProjectId ? { projectId: activeProjectId } : {}),
         }),
       });
 
@@ -330,7 +331,7 @@ export default function AgentManagementPage() {
               <span>⚡ Global LLM Presets (1-Click Switch All)</span>
               {batchLoading && <span className="text-indigo-400 animate-pulse text-[10px]">Applying preset...</span>}
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <button
                 onClick={() => handleApplyPreset('local')}
                 disabled={batchLoading}
@@ -338,6 +339,14 @@ export default function AgentManagementPage() {
                 title="Terapkan Qwen 2.5 Coder 7B Local (Free) ke semua agent"
               >
                 ⚡ Mode Hemat (Local)
+              </button>
+              <button
+                onClick={() => handleApplyPreset('free_combo5')}
+                disabled={batchLoading}
+                className="py-1.5 px-2 bg-teal-950/60 hover:bg-teal-900/80 border border-teal-700/60 text-teal-300 rounded-lg text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50 text-center"
+                title="Terapkan 9Router Combo 5 (Gratis) ke semua agent"
+              >
+                🆓 Mode Free (Combo 5)
               </button>
               <button
                 onClick={() => handleApplyPreset('balanced')}

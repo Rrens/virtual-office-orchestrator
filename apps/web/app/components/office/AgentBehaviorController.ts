@@ -501,3 +501,22 @@ export function tickBehaviors30(
 
   return next;
 }
+
+// Manual override for user-commanded behaviors (Click agent → Command modal)
+export function forceAgentBehavior(
+  behaviors: Record<string, AgentBehavior>,
+  role: string,
+  targetState: BehaviorState,
+  message: string
+): Record<string, AgentBehavior> {
+  const b = behaviors[role];
+  if (!b) return behaviors;
+
+  b.state = 'walking';
+  b.message = message;
+  b.targetPos = resolveTargetForState(role, targetState, undefined);
+  (b as any)._nextState = targetState;
+  b.idleTimer = 60 + Math.random() * 30; // reset idle timer
+
+  return { ...behaviors };
+}

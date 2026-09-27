@@ -43,6 +43,8 @@ const STATUS_LABELS: Record<string, string> = {
 export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOpenGraphify, onOpenArtifact, isMobile }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('roadmap');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedApproval, setSelectedApproval] = useState<{ id: string; title: string; status: string; description?: string } | null>(null);
+  const [selectedQAEvent, setSelectedQAEvent] = useState<WSEvent | null>(null);
 
   const completedCount = tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'APPROVED').length;
 
@@ -225,12 +227,15 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
               approvals.map((a) => (
                 <div
                   key={a.id}
+                  onClick={() => setSelectedApproval(a)}
                   style={{
                     padding: '8px 10px',
                     borderRadius: 10,
                     border: `1px solid ${a.status === 'approved' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
                     background: a.status === 'approved' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(30, 41, 59, 0.55)',
                     backdropFilter: 'blur(6px)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc' }}>{a.title}</div>
@@ -361,11 +366,14 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
                 return (
                   <div
                     key={i}
+                    onClick={() => setSelectedQAEvent(e)}
                     style={{
                       padding: '8px 10px',
                       borderRadius: 10,
                       border: `1px solid ${isApproved ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
                       background: isApproved ? 'rgba(16, 185, 129, 0.08)' : 'rgba(30, 41, 59, 0.55)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
@@ -465,6 +473,90 @@ export function RoadmapQAPanel({ goal, tasks, approvals, artifacts, events, onOp
                 onClick={() => setSelectedTask(null)}
                 className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
               >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approval Detail Modal */}
+      {selectedApproval && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setSelectedApproval(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <span className="text-sm font-bold text-white">📋 Detail Keputusan</span>
+              <button onClick={() => setSelectedApproval(null)} className="text-slate-400 hover:text-white text-lg leading-none">✕</button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Judul</p>
+                <p className="text-white font-bold">{selectedApproval.title}</p>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Deskripsi</p>
+                <p className="text-slate-200 leading-relaxed whitespace-pre-wrap">{selectedApproval.description || 'Tidak ada deskripsi.'}</p>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Status</p>
+                <span style={{ color: selectedApproval.status === 'approved' ? '#34d399' : selectedApproval.status === 'pending' ? '#fbbf24' : '#f87171' }} className="font-bold uppercase">
+                  {selectedApproval.status}
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button onClick={() => setSelectedApproval(null)} className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer">
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QA Event Detail Modal */}
+      {selectedQAEvent && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setSelectedQAEvent(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <span className="text-sm font-bold text-white">🔍 Detail Bukti QA</span>
+              <button onClick={() => setSelectedQAEvent(null)} className="text-slate-400 hover:text-white text-lg leading-none">✕</button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Tipe Event</p>
+                  <p className="text-indigo-400 font-mono">{String(selectedQAEvent.type ?? '-')}</p>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Agent Role</p>
+                  <p className="text-emerald-400 font-mono">{String(selectedQAEvent.agentRole ?? '-')}</p>
+                </div>
+              </div>
+              {selectedQAEvent.taskId != null && (
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Task ID</p>
+                  <p className="text-slate-300 font-mono">#{String(selectedQAEvent.taskId)}</p>
+                </div>
+              )}
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <p className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider mb-1">Pesan QA</p>
+                <p className="text-slate-200 leading-relaxed whitespace-pre-wrap">{String(selectedQAEvent.message ?? 'Tidak ada pesan.')}</p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button onClick={() => setSelectedQAEvent(null)} className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer">
                 Tutup
               </button>
             </div>

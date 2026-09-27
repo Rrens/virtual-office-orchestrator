@@ -6,14 +6,14 @@ import type { AgentStatus } from '@virtual-office/shared';
 type AgentStatusType = AgentStatus;
 
 const VALID_TRANSITIONS: Record<AgentStatusType, AgentStatusType[]> = {
-  idle: ['assigned'],
-  assigned: ['thinking', 'idle'],
-  thinking: ['working', 'error'],
-  working: ['reviewing', 'waiting', 'error', 'completed'],
-  waiting: ['working', 'error'],
-  reviewing: ['completed', 'working'],
+  idle: ['assigned', 'reviewing', 'working', 'error'],
+  assigned: ['thinking', 'working', 'idle', 'error'],
+  thinking: ['working', 'error', 'idle'],
+  working: ['reviewing', 'waiting', 'error', 'completed', 'idle'],
+  waiting: ['working', 'error', 'idle'],
+  reviewing: ['completed', 'working', 'error', 'idle'],
   completed: ['idle'],
-  error: ['assigned', 'escalated'],
+  error: ['assigned', 'escalated', 'idle'],
   escalated: ['idle'],
 };
 

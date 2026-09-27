@@ -159,8 +159,6 @@ export function ArtifactViewerModal({ taskId, taskTitle, onClose }: Props) {
 									<div className='flex items-center gap-2'>
 										<Link
 											href={`/code?file=${selected.id}`}
-											target="_blank"
-											rel="noopener noreferrer"
 											className='text-xs px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors flex items-center gap-1 no-underline'
 											title='Buka file ini di Code Editor'
 										>

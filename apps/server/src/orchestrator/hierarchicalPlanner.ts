@@ -103,12 +103,14 @@ export class HierarchicalPlanner {
       // Level 1: Chief Orchestrator determines milestones
       const milestones = await this.planLevel1Milestones(goal);
       
-      // Level 2: Sub-Orchestrators decompose their respective milestones
+      // Level 2: Sub-Orchestrators decompose their respective milestones concurrently
       const tasks: DAGTask[] = [];
       const departments = Array.from(new Set(milestones.map((m) => m.department)));
 
-      for (const milestone of milestones) {
-        const subTasks = await this.planLevel2SubTasks(milestone, goal, tasks);
+      const subTaskBatches = await Promise.all(
+        milestones.map((milestone) => this.planLevel2SubTasks(milestone, goal, []))
+      );
+      for (const subTasks of subTaskBatches) {
         tasks.push(...subTasks);
       }
 
@@ -237,8 +239,8 @@ Output strict JSON:
 }`;
 
     try {
-      const response = await modelRouter.routeByTier('tier1_ollama', {
-        maxTokens: 1024,
+      const response = await modelRouter.routeByTier('tier2_9router', {
+        maxTokens: 2048,
         messages: [{ role: 'system', content: prompt }],
         temperature: 0.2,
         agentRole: lead.leadRole,

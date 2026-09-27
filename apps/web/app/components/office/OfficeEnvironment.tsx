@@ -8,7 +8,13 @@ import { FLOOR_HEIGHTS, AGENT_REGISTRY_30 } from './OfficeWaypoints';
 import { ExecutiveHelicopter } from './ExecutiveHelicopter';
 import { globalElevatorState } from './AgentBehaviorController';
 
-export function OfficeEnvironment() {
+interface Props {
+  virtualHours?: number;
+  virtualMinutes?: number;
+  officeLightsOn?: boolean;
+}
+
+export function OfficeEnvironment({ virtualHours = 12, virtualMinutes = 0, officeLightsOn = false }: Props) {
   const cabinRef = useRef<THREE.Group>(null);
   const leftDoorRef = useRef<THREE.Mesh>(null);
   const rightDoorRef = useRef<THREE.Mesh>(null);
@@ -978,7 +984,7 @@ export function OfficeEnvironment() {
               </mesh>
             ))
           )}
-          <ExecutiveHelicopter position={[0, 0.06, 0]} />
+          <ExecutiveHelicopter position={[0, 0.06, 0]} virtualHours={virtualHours} virtualMinutes={virtualMinutes} />
         </group>
       </group>
 
